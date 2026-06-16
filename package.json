@@ -1,0 +1,14 @@
+{
+  "name": "safewalk-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SafeWalk AI - An AI-powered campus and off-campus student safety assistant.",
+  "scripts": {
+    "mobile": "npm --prefix apps/mobile run start",
+    "api": "npm --prefix apps/api run dev",
+    "dev": "concurrently \"npm run api\" \"npm run mobile\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

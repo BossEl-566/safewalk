@@ -179,6 +179,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: COLORS.warningDark,
   },
+  
 
   warningText: {
     marginTop: SPACING.xs,

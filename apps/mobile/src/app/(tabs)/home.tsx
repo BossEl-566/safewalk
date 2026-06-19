@@ -1,4 +1,7 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import { useContactStore } from "../../store/contactStore";
+import { useSOSStore } from "../../store/sosStore";
+import { getCurrentLocation } from "../../lib/location";
 import { router } from "expo-router";
 import { Screen } from "../../components/Screen";
 import { SafetyCard } from "../../components/SafetyCard";
@@ -7,9 +10,47 @@ import { EmergencyButton } from "../../components/EmergencyButton";
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from "../../constants/theme";
 
 export default function HomeScreen() {
-  const handleSOSPress = () => {
-    console.log("SOS pressed");
-  };
+  const contacts = useContactStore((state) => state.contacts);
+const createSOSAlert = useSOSStore((state) => state.createSOSAlert);
+
+const handleSOSPress = async () => {
+  if (contacts.length === 0) {
+    Alert.alert(
+      "No Emergency Contacts",
+      "Add at least one trusted contact before using SOS.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Add Contact",
+          onPress: () => router.push("/contacts"),
+        },
+      ]
+    );
+
+    return;
+  }
+
+  try {
+    const location = await getCurrentLocation();
+
+    const alertId = createSOSAlert({
+      userName: "SafeWalk User",
+      location,
+    });
+
+    router.push({
+      pathname: "/sos/active",
+      params: { alertId },
+    });
+  } catch (error) {
+    Alert.alert(
+      "Location Error",
+      error instanceof Error
+        ? error.message
+        : "Unable to get your current location."
+    );
+  }
+};
 
   return (
     <Screen scroll>

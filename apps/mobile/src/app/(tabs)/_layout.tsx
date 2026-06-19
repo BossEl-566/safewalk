@@ -1,6 +1,12 @@
 import { Tabs } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import {
+  Home,
+  Map,
+  User,
+  ShieldAlert,
+  Footprints,
+} from "lucide-react-native";
+
 import { COLORS, FONT_SIZE } from "../../constants/theme";
 
 export default function TabsLayout() {
@@ -28,12 +34,8 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={size}
-              color={String(color)}
-            />
+          tabBarIcon: ({ color, size }) => (
+            <Home size={size} color={String(color)} strokeWidth={2.4} />
           ),
         }}
       />
@@ -43,11 +45,7 @@ export default function TabsLayout() {
         options={{
           title: "Walk",
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons
-              name="walk"
-              size={size}
-              color={String(color)}
-            />
+            <Footprints size={size} color={String(color)} strokeWidth={2.4} />
           ),
         }}
       />
@@ -56,12 +54,8 @@ export default function TabsLayout() {
         name="report"
         options={{
           title: "Report",
-          tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons
-              name={focused ? "warning" : "warning-outline"}
-              size={size}
-              color={String(color)}
-            />
+          tabBarIcon: ({ color, size }) => (
+            <ShieldAlert size={size} color={String(color)} strokeWidth={2.4} />
           ),
         }}
       />
@@ -70,12 +64,8 @@ export default function TabsLayout() {
         name="risk-map"
         options={{
           title: "Map",
-          tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons
-              name={focused ? "map" : "map-outline"}
-              size={size}
-              color={String(color)}
-            />
+          tabBarIcon: ({ color, size }) => (
+            <Map size={size} color={String(color)} strokeWidth={2.4} />
           ),
         }}
       />
@@ -84,16 +74,11 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons
-              name={focused ? "person" : "person-outline"}
-              size={size}
-              color={String(color)}
-            />
+          tabBarIcon: ({ color, size }) => (
+            <User size={size} color={String(color)} strokeWidth={2.4} />
           ),
         }}
       />
-      
     </Tabs>
   );
 }

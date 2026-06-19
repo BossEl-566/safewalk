@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { FeaturePlaceholder } from "../../components/FeaturePlaceholder";
 
 export default function ProfileScreen() {
@@ -6,8 +7,8 @@ export default function ProfileScreen() {
       emoji="👤"
       title="Safety Profile"
       subtitle="Manage your personal safety profile, emergency contacts, medical notes, and alert preferences."
-      primaryActionLabel="Edit Profile"
-      onPrimaryAction={() => console.log("Edit Profile")}
+      primaryActionLabel="Manage Emergency Contacts"
+      onPrimaryAction={() => router.push("/contacts")}
     />
   );
 }

@@ -72,12 +72,12 @@ export default function HomeScreen() {
           />
 
           <SafetyCard
-            title="Contacts"
-            description="Manage people who receive emergency alerts."
-            icon="👥"
-            onPress={() => router.push("/(tabs)/profile")}
-            style={styles.gridCard}
-          />
+  title="Contacts"
+  description="Manage people who receive emergency alerts."
+  icon="👥"
+  onPress={() => router.push("/contacts")}
+  style={styles.gridCard}
+/>
         </View>
       </View>
 

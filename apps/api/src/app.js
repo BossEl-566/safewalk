@@ -3,6 +3,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 
+const incidentRoutes = require("./routes/incidentRoutes");
+
 const app = express();
 
 app.use(helmet());
@@ -22,6 +24,15 @@ app.get("/health", (req, res) => {
     success: true,
     status: "healthy",
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.use("/api/incidents", incidentRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found.",
   });
 });
 

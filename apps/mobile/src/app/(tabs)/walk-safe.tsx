@@ -23,6 +23,13 @@ import { useContactStore } from "../../store/contactStore";
 import { useWalkSafeStore } from "../../store/walkSafeStore";
 import { getCurrentLocation } from "../../lib/location";
 import { EmergencyContact } from "../../types/contact";
+import { getIncidentReportsApi } from "../../lib/incidentApi";
+import { useIncidentStore } from "../../store/incidentStore";
+import { getNearbyRiskWarnings } from "../../utils/geoRisk";
+import {
+  WalkSafeLocation,
+  WalkSafeNearbyRisk,
+} from "../../types/walkSafe";
 
 const durationOptions = [10, 15, 20, 30, 45];
 
@@ -63,6 +70,7 @@ function ContactOption({
 export default function WalkSafeScreen() {
   const contacts = useContactStore((state) => state.contacts);
   const startSession = useWalkSafeStore((state) => state.startSession);
+  const localReports = useIncidentStore((state) => state.reports);
 
   const [destinationName, setDestinationName] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
@@ -75,56 +83,109 @@ export default function WalkSafeScreen() {
     (contact) => contact.id === selectedContactId
   );
 
+  const startWalkSafeSession = (
+  location: WalkSafeLocation,
+  nearbyRiskWarnings: WalkSafeNearbyRisk[]
+) => {
+  if (!selectedContact) return;
+
+  const sessionId = startSession({
+    destinationName,
+    trustedContactId: selectedContact.id,
+    trustedContactName: selectedContact.name,
+    trustedContactPhone: selectedContact.phone,
+    expectedDurationMinutes: duration,
+    startLocation: location,
+    nearbyRiskWarnings,
+  });
+
+  router.push({
+    pathname: "/walk-safe/active",
+    params: { sessionId },
+  });
+};
+
   const handleStartWalkSafe = async () => {
-    if (!destinationName.trim()) {
-      Alert.alert("Missing Destination", "Please enter where you are going.");
-      return;
+  if (!destinationName.trim()) {
+    Alert.alert("Missing Destination", "Please enter where you are going.");
+    return;
+  }
+
+  if (!selectedContact) {
+    Alert.alert(
+      "No Trusted Contact",
+      "Please select or add a trusted contact before starting Walk Safe.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Add Contact",
+          onPress: () => router.push("/contacts"),
+        },
+      ]
+    );
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const location = await getCurrentLocation();
+
+    let reportsForRiskCheck = localReports;
+
+    try {
+      reportsForRiskCheck = await getIncidentReportsApi();
+    } catch (error) {
+      console.log("Using local reports for Walk Safe risk check:", error);
     }
 
-    if (!selectedContact) {
+    const nearbyRiskWarnings = getNearbyRiskWarnings({
+      currentLocation: location,
+      reports: reportsForRiskCheck,
+      radiusMeters: 800,
+    });
+
+    if (nearbyRiskWarnings.length > 0) {
+      const highestRisk = nearbyRiskWarnings[0];
+
       Alert.alert(
-        "No Trusted Contact",
-        "Please select or add a trusted contact before starting Walk Safe.",
+        "Nearby Risk Detected",
+        `SafeWalk AI found ${nearbyRiskWarnings.length} risk report${
+          nearbyRiskWarnings.length > 1 ? "s" : ""
+        } near your current area.\n\nHighest risk: ${
+          highestRisk.title
+        }\nDistance: ${highestRisk.distanceMeters}m\nRisk score: ${
+          highestRisk.aiRiskScore
+        }`,
         [
-          { text: "Cancel", style: "cancel" },
           {
-            text: "Add Contact",
-            onPress: () => router.push("/contacts"),
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Start Anyway",
+            onPress: () => {
+              startWalkSafeSession(location, nearbyRiskWarnings);
+            },
           },
         ]
       );
+
       return;
     }
 
-    try {
-      setLoading(true);
-
-      const location = await getCurrentLocation();
-
-      const sessionId = startSession({
-        destinationName,
-        trustedContactId: selectedContact.id,
-        trustedContactName: selectedContact.name,
-        trustedContactPhone: selectedContact.phone,
-        expectedDurationMinutes: duration,
-        startLocation: location,
-      });
-
-      router.push({
-        pathname: "/walk-safe/active",
-        params: { sessionId },
-      });
-    } catch (error) {
-      Alert.alert(
-        "Location Error",
-        error instanceof Error
-          ? error.message
-          : "Unable to get your current location."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    startWalkSafeSession(location, nearbyRiskWarnings);
+  } catch (error) {
+    Alert.alert(
+      "Location Error",
+      error instanceof Error
+        ? error.message
+        : "Unable to get your current location."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <Screen scroll>

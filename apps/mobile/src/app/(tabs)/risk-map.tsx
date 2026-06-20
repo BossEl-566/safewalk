@@ -27,6 +27,7 @@ import {
 } from "../../constants/theme";
 import { useIncidentStore } from "../../store/incidentStore";
 import { IncidentReport } from "../../types/incident";
+import { RiskMapView } from "../../components/RiskMapView";
 import {
   getHighRiskReports,
   getLocationInsights,
@@ -418,6 +419,15 @@ export default function RiskMapScreen() {
         lastSyncAt={lastSyncAt}
         onRefresh={fetchBackendReports}
       />
+
+      <View style={styles.section}>
+  <SectionHeader
+    title="Visual Risk Map"
+    subtitle="Incident reports with GPS coordinates are displayed as danger-zone markers."
+  />
+
+  <RiskMapView reports={reports} />
+</View>
 
       <View style={styles.statsGrid}>
         <StatCard

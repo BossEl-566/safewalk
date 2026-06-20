@@ -61,6 +61,8 @@ export default function ActiveWalkSafeScreen() {
     );
   }
 
+  const nearbyRiskWarnings = session.nearbyRiskWarnings ?? [];
+
   const handleCheckIn = () => {
     checkInSafe(session.id);
     Alert.alert("Check-in Saved", "Your Walk Safe session has been updated.");
@@ -211,12 +213,12 @@ Please check on me if I do not arrive on time.`,
           <AlertTriangle
             size={22}
             color={
-              session.riskLevel === "high"
-                ? COLORS.danger
-                : session.riskLevel === "medium"
-                  ? COLORS.warning
-                  : COLORS.primary
-            }
+  session.riskLevel === "critical" || session.riskLevel === "high"
+    ? COLORS.danger
+    : session.riskLevel === "medium"
+      ? COLORS.warning
+      : COLORS.primary
+}
           />
           <Text style={styles.riskTitle}>
             Current risk level: {session.riskLevel.toUpperCase()}
@@ -228,6 +230,47 @@ Please check on me if I do not arrive on time.`,
           incident reports, route history, time of day, and AI risk scoring.
         </Text>
       </View>
+
+      {nearbyRiskWarnings.length > 0 ? (
+  <View style={styles.nearbyRiskSection}>
+    <Text style={styles.nearbyRiskSectionTitle}>
+      Nearby Risk Warnings
+    </Text>
+
+    <Text style={styles.nearbyRiskSectionText}>
+      SafeWalk AI found recent incident reports close to your starting area.
+    </Text>
+
+    {nearbyRiskWarnings.slice(0, 3).map((warning) => (
+      <View key={warning.reportId} style={styles.nearbyRiskCard}>
+        <View style={styles.nearbyRiskHeader}>
+          <AlertTriangle
+            size={20}
+            color={
+              warning.riskLevel === "critical" ||
+              warning.riskLevel === "high"
+                ? COLORS.danger
+                : warning.riskLevel === "medium"
+                  ? COLORS.warning
+                  : COLORS.primary
+            }
+          />
+
+          <Text style={styles.nearbyRiskTitle}>{warning.title}</Text>
+        </View>
+
+        <Text style={styles.nearbyRiskMeta}>
+          {warning.locationName} • {warning.distanceMeters}m away • Score{" "}
+          {warning.aiRiskScore}
+        </Text>
+
+        <Text style={styles.nearbyRiskDescription}>
+          {warning.description}
+        </Text>
+      </View>
+    ))}
+  </View>
+) : null}
 
       <View style={styles.actions}>
         <AppButton
@@ -421,4 +464,63 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xl,
     gap: SPACING.md,
   },
+  nearbyRiskSection: {
+  marginTop: SPACING.lg,
+  backgroundColor: COLORS.dangerLight,
+  borderRadius: RADIUS.xl,
+  padding: SPACING.lg,
+  borderWidth: 1,
+  borderColor: "#FECACA",
+},
+
+nearbyRiskSectionTitle: {
+  fontSize: FONT_SIZE.md,
+  fontWeight: "900",
+  color: COLORS.dangerDark,
+},
+
+nearbyRiskSectionText: {
+  marginTop: SPACING.xs,
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.dangerDark,
+  lineHeight: 20,
+  fontWeight: "600",
+},
+
+nearbyRiskCard: {
+  marginTop: SPACING.md,
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  borderWidth: 1,
+  borderColor: "#FECACA",
+},
+
+nearbyRiskHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.sm,
+},
+
+nearbyRiskTitle: {
+  flex: 1,
+  fontSize: FONT_SIZE.sm,
+  fontWeight: "900",
+  color: COLORS.text,
+},
+
+nearbyRiskMeta: {
+  marginTop: SPACING.xs,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.danger,
+  fontWeight: "900",
+},
+
+nearbyRiskDescription: {
+  marginTop: SPACING.xs,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.text,
+  fontWeight: "600",
+  lineHeight: 18,
+},
 });

@@ -31,6 +31,7 @@ import {
 } from "../../types/incident";
 import { useIncidentStore } from "../../store/incidentStore";
 import { getCurrentLocation } from "../../lib/location";
+import { createIncidentReportApi } from "../../lib/incidentApi";
 
 type CategoryOption = {
   label: string;
@@ -118,42 +119,47 @@ export default function ReportScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleSubmitReport = async () => {
-    if (!description.trim()) {
-      Alert.alert(
-        "Missing Description",
-        "Please briefly describe what happened."
-      );
-      return;
-    }
+  if (!description.trim()) {
+    Alert.alert(
+      "Missing Description",
+      "Please briefly describe what happened."
+    );
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    let location = null;
 
     try {
-      setLoading(true);
+      location = await getCurrentLocation();
+    } catch {
+      location = null;
+    }
 
-      let location = null;
+    const reportPayload = {
+      category,
+      description,
+      severity,
+      areaType,
+      location,
+      locationName,
+      victimWasAlone,
+      weaponInvolved,
+      attackerMode,
+      lightingCondition,
+      anonymous,
+    };
 
-      try {
-        location = await getCurrentLocation();
-      } catch {
-        location = null;
-      }
+    const localReportId = createReport(reportPayload);
 
-      const reportId = createReport({
-        category,
-        description,
-        severity,
-        areaType,
-        location,
-        locationName,
-        victimWasAlone,
-        weaponInvolved,
-        attackerMode,
-        lightingCondition,
-        anonymous,
-      });
+    try {
+      await createIncidentReportApi(reportPayload);
 
       Alert.alert(
         "Report Saved",
-        "Your incident report has been saved. It will help warn other students in future risk alerts.",
+        "Your incident report has been saved locally and synced to the SafeWalk AI database.",
         [
           {
             text: "View Risk Map",
@@ -165,22 +171,40 @@ export default function ReportScreen() {
           },
         ]
       );
+    } catch (syncError) {
+      console.log("Backend sync failed:", syncError);
 
-      console.log("Incident report created:", reportId);
-
-      setDescription("");
-      setLocationName("");
-      setAttackerMode("");
-      setLightingCondition("");
-      setSeverity("medium");
-      setCategory("phone_snatch");
-      setVictimWasAlone(true);
-      setWeaponInvolved(false);
-      setAnonymous(true);
-    } finally {
-      setLoading(false);
+      Alert.alert(
+        "Saved Locally",
+        "Your report was saved on this phone, but it could not sync to the backend. Check that your API server is running and your phone is on the same network.",
+        [
+          {
+            text: "View Risk Map",
+            onPress: () => router.push("/(tabs)/risk-map"),
+          },
+          {
+            text: "Done",
+            style: "cancel",
+          },
+        ]
+      );
     }
-  };
+
+    console.log("Local incident report created:", localReportId);
+
+    setDescription("");
+    setLocationName("");
+    setAttackerMode("");
+    setLightingCondition("");
+    setSeverity("medium");
+    setCategory("phone_snatch");
+    setVictimWasAlone(true);
+    setWeaponInvolved(false);
+    setAnonymous(true);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <Screen scroll>

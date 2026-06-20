@@ -1,13 +1,18 @@
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
 import {
   AlertTriangle,
   BarChart3,
   Brain,
   CircleAlert,
   Clock,
+  Database,
   MapPin,
+  RefreshCcw,
   ShieldCheck,
   Trash2,
+  WifiOff,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -31,6 +36,11 @@ import {
   getTopIncidentPattern,
   RiskLevel,
 } from "../../utils/riskIntelligence";
+import {
+  createIncidentReportApi,
+  deleteIncidentReportApi,
+  getIncidentReportsApi,
+} from "../../lib/incidentApi";
 
 function getRiskColor(level: RiskLevel) {
   if (level === "critical") return COLORS.danger;
@@ -68,6 +78,50 @@ function StatCard({
       <View style={styles.statIcon}>{icon}</View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SyncStatusCard({
+  usingBackend,
+  loading,
+  lastSyncAt,
+  onRefresh,
+}: {
+  usingBackend: boolean;
+  loading: boolean;
+  lastSyncAt: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <View style={styles.syncCard}>
+      <View style={styles.syncIcon}>
+        {usingBackend ? (
+          <Database size={22} color={COLORS.primary} />
+        ) : (
+          <WifiOff size={22} color={COLORS.warning} />
+        )}
+      </View>
+
+      <View style={styles.syncContent}>
+        <Text style={styles.syncTitle}>
+          {usingBackend ? "Connected to MongoDB" : "Using local fallback"}
+        </Text>
+
+        <Text style={styles.syncText}>
+          {usingBackend
+            ? `Backend reports loaded${lastSyncAt ? ` at ${formatTime(lastSyncAt)}` : ""}.`
+            : "Could not fetch backend reports. Showing reports saved on this phone."}
+        </Text>
+      </View>
+
+      <Pressable onPress={onRefresh} style={styles.refreshButton}>
+        {loading ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <RefreshCcw size={19} color={COLORS.primary} />
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -113,7 +167,8 @@ function IncidentCard({
   onDelete: () => void;
 }) {
   const riskLabel = getRiskLevelLabel(report.aiRiskScore);
-  const riskLevel =
+
+  const riskLevel: RiskLevel =
     report.aiRiskScore >= 85
       ? "critical"
       : report.aiRiskScore >= 70
@@ -173,10 +228,40 @@ function IncidentCard({
 }
 
 export default function RiskMapScreen() {
-  const reports = useIncidentStore((state) => state.reports);
-  const deleteReport = useIncidentStore((state) => state.deleteReport);
-  const createReport = useIncidentStore((state) => state.createReport);
-  const clearReports = useIncidentStore((state) => state.clearReports);
+  const localReports = useIncidentStore((state) => state.reports);
+  const deleteLocalReport = useIncidentStore((state) => state.deleteReport);
+  const createLocalReport = useIncidentStore((state) => state.createReport);
+  const clearLocalReports = useIncidentStore((state) => state.clearReports);
+
+  const [backendReports, setBackendReports] = useState<IncidentReport[]>([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [usingBackend, setUsingBackend] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+
+  const fetchBackendReports = useCallback(async () => {
+    try {
+      setLoadingReports(true);
+
+      const reports = await getIncidentReportsApi();
+
+      setBackendReports(reports);
+      setUsingBackend(true);
+      setLastSyncAt(new Date().toISOString());
+    } catch (error) {
+      console.log("Fetch backend reports failed:", error);
+      setUsingBackend(false);
+    } finally {
+      setLoadingReports(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBackendReports();
+    }, [fetchBackendReports])
+  );
+
+  const reports = usingBackend ? backendReports : localReports;
 
   const stats = getRiskStats(reports);
   const topPattern = getTopIncidentPattern(reports);
@@ -190,85 +275,127 @@ export default function RiskMapScreen() {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => deleteReport(reportId),
+        onPress: async () => {
+          if (usingBackend) {
+            try {
+              await deleteIncidentReportApi(reportId);
+              await fetchBackendReports();
+            } catch (error) {
+              Alert.alert(
+                "Delete Failed",
+                "Could not delete this report from the backend."
+              );
+            }
+          } else {
+            deleteLocalReport(reportId);
+          }
+        },
       },
     ]);
   };
 
   const handleClearReports = () => {
+    if (usingBackend) {
+      Alert.alert(
+        "Backend Mode",
+        "Clear all backend reports is disabled for safety. Delete reports one by one."
+      );
+      return;
+    }
+
     Alert.alert(
-      "Clear All Reports",
-      "This will delete all local incident reports. Continue?",
+      "Clear All Local Reports",
+      "This will delete all local incident reports saved on this phone. Continue?",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Clear",
           style: "destructive",
-          onPress: clearReports,
+          onPress: clearLocalReports,
         },
       ]
     );
   };
 
-  const handleAddDemoReports = () => {
-    createReport({
-      category: "phone_snatch",
-      severity: "high",
-      areaType: "off_campus",
-      locationName: "Ayeduase Hostel Road",
-      description:
-        "Two people on a motorbike snatched a student's phone near the junction.",
-      location: {
-        latitude: 6.6743,
-        longitude: -1.5712,
-        accuracy: 20,
+  const handleAddDemoReports = async () => {
+    const demoReports = [
+      {
+        category: "phone_snatch" as const,
+        severity: "high" as const,
+        areaType: "off_campus" as const,
+        locationName: "Ayeduase Hostel Road",
+        description:
+          "Two people on a motorbike snatched a student's phone near the junction.",
+        location: {
+          latitude: 6.6743,
+          longitude: -1.5712,
+          accuracy: 20,
+        },
+        victimWasAlone: true,
+        weaponInvolved: false,
+        attackerMode: "Motorbike",
+        lightingCondition: "Poor lighting",
+        anonymous: true,
       },
-      victimWasAlone: true,
-      weaponInvolved: false,
-      attackerMode: "Motorbike",
-      lightingCondition: "Poor lighting",
-      anonymous: true,
-    });
-
-    createReport({
-      category: "forced_momo_withdrawal",
-      severity: "critical",
-      areaType: "off_campus",
-      locationName: "Quiet Road Near Hostel",
-      description:
-        "Student was threatened and forced to transfer mobile money while walking alone.",
-      location: {
-        latitude: 6.6751,
-        longitude: -1.5721,
-        accuracy: 25,
+      {
+        category: "forced_momo_withdrawal" as const,
+        severity: "critical" as const,
+        areaType: "off_campus" as const,
+        locationName: "Quiet Road Near Hostel",
+        description:
+          "Student was threatened and forced to transfer mobile money while walking alone.",
+        location: {
+          latitude: 6.6751,
+          longitude: -1.5721,
+          accuracy: 25,
+        },
+        victimWasAlone: true,
+        weaponInvolved: true,
+        attackerMode: "Walking gang",
+        lightingCondition: "Dark road",
+        anonymous: true,
       },
-      victimWasAlone: true,
-      weaponInvolved: true,
-      attackerMode: "Walking gang",
-      lightingCondition: "Dark road",
-      anonymous: true,
-    });
-
-    createReport({
-      category: "poor_lighting",
-      severity: "medium",
-      areaType: "off_campus",
-      locationName: "Hostel Junction",
-      description:
-        "Streetlights are not working, and the area becomes very dark at night.",
-      location: {
-        latitude: 6.6738,
-        longitude: -1.5709,
-        accuracy: 30,
+      {
+        category: "poor_lighting" as const,
+        severity: "medium" as const,
+        areaType: "off_campus" as const,
+        locationName: "Hostel Junction",
+        description:
+          "Streetlights are not working, and the area becomes very dark at night.",
+        location: {
+          latitude: 6.6738,
+          longitude: -1.5709,
+          accuracy: 30,
+        },
+        victimWasAlone: false,
+        weaponInvolved: false,
+        attackerMode: "",
+        lightingCondition: "Very poor lighting",
+        anonymous: true,
       },
-      victimWasAlone: false,
-      weaponInvolved: false,
-      attackerMode: "",
-      lightingCondition: "Very poor lighting",
-      anonymous: true,
-    });
+    ];
 
-    Alert.alert("Demo Reports Added", "Sample incident reports have been added.");
+    try {
+      for (const report of demoReports) {
+        createLocalReport(report);
+      }
+
+      for (const report of demoReports) {
+        await createIncidentReportApi(report);
+      }
+
+      await fetchBackendReports();
+
+      Alert.alert(
+        "Demo Reports Added",
+        "Sample reports were added locally and synced to MongoDB."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Demo Reports Added Locally",
+        "The sample reports were saved locally, but backend sync failed."
+      );
+    }
   };
 
   return (
@@ -284,6 +411,13 @@ export default function RiskMapScreen() {
           and hotspot warnings.
         </Text>
       </View>
+
+      <SyncStatusCard
+        usingBackend={usingBackend}
+        loading={loadingReports}
+        lastSyncAt={lastSyncAt}
+        onRefresh={fetchBackendReports}
+      />
 
       <View style={styles.statsGrid}>
         <StatCard
@@ -319,8 +453,8 @@ export default function RiskMapScreen() {
 
           <Text style={styles.emptyTitle}>No reports yet</Text>
           <Text style={styles.emptyText}>
-            Once students report incidents, SafeWalk AI will use them to
-            identify high-risk areas and warn future users.
+            Once students report incidents, SafeWalk AI will identify high-risk
+            areas and warn future users.
           </Text>
 
           <AppButton
@@ -354,7 +488,7 @@ export default function RiskMapScreen() {
                       } match this pattern. The current average risk score is ${
                         stats.averageRiskScore
                       }.`
-                    : "More reports are needed before a reliable risk pattern can be identified."}
+                    : "More reports are needed before a reliable pattern can be identified."}
                 </Text>
               </View>
             </View>
@@ -405,7 +539,11 @@ export default function RiskMapScreen() {
           <View style={styles.section}>
             <SectionHeader
               title="Recent reports"
-              subtitle="Latest student-submitted safety reports."
+              subtitle={
+                usingBackend
+                  ? "Latest reports fetched from MongoDB."
+                  : "Latest reports saved on this phone."
+              }
             />
 
             {recentReports.map((report) => (
@@ -419,13 +557,20 @@ export default function RiskMapScreen() {
 
           <View style={styles.actions}>
             <AppButton
+              title="Refresh from Database"
+              onPress={fetchBackendReports}
+              variant="primary"
+              loading={loadingReports}
+            />
+
+            <AppButton
               title="Add Demo Reports"
               onPress={handleAddDemoReports}
               variant="secondary"
             />
 
             <AppButton
-              title="Clear Local Reports"
+              title={usingBackend ? "Clear Disabled in Backend Mode" : "Clear Local Reports"}
               onPress={handleClearReports}
               variant="ghost"
             />
@@ -437,8 +582,8 @@ export default function RiskMapScreen() {
         <Clock size={20} color={COLORS.info} />
 
         <Text style={styles.futureMapText}>
-          Next improvement: connect this intelligence to a real map, so students
-          can receive warnings when their route passes through a high-risk area.
+          Next improvement: add a real visual map with risk markers and route
+          warnings.
         </Text>
       </View>
     </Screen>
@@ -478,6 +623,55 @@ const styles = StyleSheet.create({
     color: COLORS.mutedText,
     textAlign: "center",
     lineHeight: 21,
+  },
+
+  syncCard: {
+    marginTop: SPACING.xl,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    ...SHADOWS.soft,
+  },
+
+  syncIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  syncContent: {
+    flex: 1,
+  },
+
+  syncTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  syncText: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+
+  refreshButton: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   statsGrid: {

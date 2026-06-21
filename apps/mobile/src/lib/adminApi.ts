@@ -1,4 +1,5 @@
 import { IncidentReport } from "../types/incident";
+import { WalkSafeSession } from "../types/walkSafe";
 import { api } from "./api";
 
 export type AdminSOSAlert = {
@@ -24,15 +25,21 @@ export type AdminOverviewStats = {
   totalIncidents: number;
   highRiskIncidents: number;
   criticalIncidents: number;
+
   activeSOSAlerts: number;
   resolvedSOSAlerts: number;
   cancelledSOSAlerts: number;
+
+  activeWalkSafeSessions: number;
+  completedWalkSafeSessions: number;
+  cancelledWalkSafeSessions: number;
 };
 
 export type AdminOverview = {
   stats: AdminOverviewStats;
   activeSOSAlerts: AdminSOSAlert[];
   highRiskReports: IncidentReport[];
+  activeWalkSafeSessions: WalkSafeSession[];
 };
 
 function normalizeSOSAlert(alert: any): AdminSOSAlert {
@@ -80,6 +87,33 @@ function normalizeIncidentReport(report: any): IncidentReport {
   };
 }
 
+function normalizeWalkSafeSession(session: any): WalkSafeSession {
+  return {
+    id: session.id ?? session._id ?? String(Date.now()),
+    backendId: session._id ?? session.id,
+    status: session.status ?? "active",
+
+    startLocation: session.startLocation ?? null,
+    destinationName: session.destinationName ?? "",
+
+    trustedContactId: session.trustedContactId ?? "",
+    trustedContactName: session.trustedContactName ?? "",
+    trustedContactPhone: session.trustedContactPhone ?? "",
+
+    expectedDurationMinutes: Number(session.expectedDurationMinutes ?? 0),
+    startedAt: session.startedAt ?? session.createdAt ?? new Date().toISOString(),
+    expectedArrivalAt:
+      session.expectedArrivalAt ?? session.createdAt ?? new Date().toISOString(),
+
+    lastCheckInAt: session.lastCheckInAt ?? undefined,
+    completedAt: session.completedAt ?? undefined,
+    cancelledAt: session.cancelledAt ?? undefined,
+
+    riskLevel: session.riskLevel ?? "low",
+    nearbyRiskWarnings: session.nearbyRiskWarnings ?? [],
+  };
+}
+
 export async function getAdminOverviewApi(): Promise<AdminOverview> {
   const response = await api.get("/admin/overview");
 
@@ -90,11 +124,24 @@ export async function getAdminOverviewApi(): Promise<AdminOverview> {
       totalIncidents: Number(data?.stats?.totalIncidents ?? 0),
       highRiskIncidents: Number(data?.stats?.highRiskIncidents ?? 0),
       criticalIncidents: Number(data?.stats?.criticalIncidents ?? 0),
+
       activeSOSAlerts: Number(data?.stats?.activeSOSAlerts ?? 0),
       resolvedSOSAlerts: Number(data?.stats?.resolvedSOSAlerts ?? 0),
       cancelledSOSAlerts: Number(data?.stats?.cancelledSOSAlerts ?? 0),
+
+      activeWalkSafeSessions: Number(data?.stats?.activeWalkSafeSessions ?? 0),
+      completedWalkSafeSessions: Number(
+        data?.stats?.completedWalkSafeSessions ?? 0
+      ),
+      cancelledWalkSafeSessions: Number(
+        data?.stats?.cancelledWalkSafeSessions ?? 0
+      ),
     },
+
     activeSOSAlerts: (data?.activeSOSAlerts ?? []).map(normalizeSOSAlert),
     highRiskReports: (data?.highRiskReports ?? []).map(normalizeIncidentReport),
+    activeWalkSafeSessions: (data?.activeWalkSafeSessions ?? []).map(
+      normalizeWalkSafeSession
+    ),
   };
 }

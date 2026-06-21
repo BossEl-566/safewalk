@@ -23,6 +23,11 @@ import {
 import { useWalkSafeStore } from "../../store/walkSafeStore";
 import { useSOSStore } from "../../store/sosStore";
 import { createSOSAlertApi } from "../../lib/sosApi";
+import {
+  cancelWalkSafeSessionApi,
+  checkInWalkSafeSessionApi,
+  completeWalkSafeSessionApi,
+} from "../../lib/walkSafeApi";
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], {
@@ -64,10 +69,17 @@ export default function ActiveWalkSafeScreen() {
 
   const nearbyRiskWarnings = session.nearbyRiskWarnings ?? [];
 
-  const handleCheckIn = () => {
-    checkInSafe(session.id);
-    Alert.alert("Check-in Saved", "Your Walk Safe session has been updated.");
-  };
+  const handleCheckIn = async () => {
+  checkInSafe(session.id);
+
+  if (session.backendId) {
+    checkInWalkSafeSessionApi(session.backendId).catch((error) => {
+      console.log("Backend check-in sync failed:", error);
+    });
+  }
+
+  Alert.alert("Check-in Saved", "Your Walk Safe session has been updated.");
+};
 
   const handleShareWalk = async () => {
     const mapLink = session.startLocation
@@ -140,7 +152,14 @@ router.push({
           text: "Yes, I arrived",
           onPress: () => {
             completeSession(session.id);
-            router.replace("/(tabs)/home");
+
+if (session.backendId) {
+  completeWalkSafeSessionApi(session.backendId).catch((error) => {
+    console.log("Backend complete sync failed:", error);
+  });
+}
+
+router.replace("/(tabs)/home");
           },
         },
       ]
@@ -158,7 +177,14 @@ router.push({
           style: "destructive",
           onPress: () => {
             cancelSession(session.id);
-            router.replace("/(tabs)/home");
+
+if (session.backendId) {
+  cancelWalkSafeSessionApi(session.backendId).catch((error) => {
+    console.log("Backend cancel sync failed:", error);
+  });
+}
+
+router.replace("/(tabs)/home");
           },
         },
       ]

@@ -21,6 +21,9 @@ import {
   RefreshCcw,
   ShieldAlert,
   XCircle,
+  Clock,
+Footprints,
+Navigation,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -43,6 +46,7 @@ import {
   resolveSOSAlertApi,
 } from "../../lib/sosApi";
 import { IncidentReport } from "../../types/incident";
+import { WalkSafeSession } from "../../types/walkSafe";
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString([], {
@@ -169,6 +173,99 @@ function SOSAlertCard({
           onPress={onCancel}
           variant="ghost"
           icon={<XCircle size={20} color={COLORS.primaryDark} />}
+        />
+      </View>
+    </View>
+  );
+}
+
+function WalkSafeSessionCard({ session }: { session: WalkSafeSession }) {
+  const openMap = () => {
+    if (!session.startLocation) {
+      Alert.alert("No Location", "This Walk Safe session has no GPS location.");
+      return;
+    }
+
+    Linking.openURL(
+      `https://www.google.com/maps?q=${session.startLocation.latitude},${session.startLocation.longitude}`
+    );
+  };
+
+  const callContact = () => {
+    if (!session.trustedContactPhone) {
+      Alert.alert("No Contact", "No trusted contact phone was saved.");
+      return;
+    }
+
+    Linking.openURL(`tel:${session.trustedContactPhone}`);
+  };
+
+  return (
+    <View style={styles.walkCard}>
+      <View style={styles.walkHeader}>
+        <View style={styles.walkIcon}>
+          <Footprints size={24} color={COLORS.primary} />
+        </View>
+
+        <View style={styles.walkHeaderText}>
+          <Text style={styles.walkTitle}>Active Walk Safe Session</Text>
+          <Text style={styles.walkMeta}>
+            Started {formatDateTime(session.startedAt)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.walkInfoRow}>
+        <Navigation size={16} color={COLORS.mutedText} />
+        <Text style={styles.walkInfoText}>
+          Destination: {session.destinationName}
+        </Text>
+      </View>
+
+      <View style={styles.walkInfoRow}>
+        <Clock size={16} color={COLORS.mutedText} />
+        <Text style={styles.walkInfoText}>
+          Expected arrival: {formatDateTime(session.expectedArrivalAt)}
+        </Text>
+      </View>
+
+      <View style={styles.walkInfoRow}>
+        <Phone size={16} color={COLORS.mutedText} />
+        <Text style={styles.walkInfoText}>
+          {session.trustedContactName} • {session.trustedContactPhone}
+        </Text>
+      </View>
+
+      <View style={styles.walkRiskBox}>
+        <AlertTriangle
+          size={17}
+          color={
+            session.riskLevel === "critical" || session.riskLevel === "high"
+              ? COLORS.danger
+              : session.riskLevel === "medium"
+                ? COLORS.warning
+                : COLORS.primary
+          }
+        />
+
+        <Text style={styles.walkRiskText}>
+          Risk level: {session.riskLevel.toUpperCase()} •{" "}
+          {session.nearbyRiskWarnings.length} nearby warning
+          {session.nearbyRiskWarnings.length === 1 ? "" : "s"}
+        </Text>
+      </View>
+
+      <View style={styles.walkActions}>
+        <AppButton
+          title="Open Map"
+          onPress={openMap}
+          variant="secondary"
+        />
+
+        <AppButton
+          title="Call Contact"
+          onPress={callContact}
+          variant="secondary"
         />
       </View>
     </View>
@@ -334,6 +431,11 @@ export default function AdminDashboardScreen() {
             value={stats.criticalIncidents}
             tone="danger"
           />
+          <StatCard
+  label="Active Walks"
+  value={stats.activeWalkSafeSessions}
+  tone="primary"
+/>
         </View>
       ) : null}
 
@@ -362,6 +464,27 @@ export default function AdminDashboardScreen() {
           </View>
         )}
       </View>
+
+      <View style={styles.section}>
+  <SectionHeader
+    title="Active Walk Safe Sessions"
+    subtitle="Students currently using monitored walking mode."
+  />
+
+  {overview?.activeWalkSafeSessions.length ? (
+    overview.activeWalkSafeSessions.map((session) => (
+      <WalkSafeSessionCard key={session.id} session={session} />
+    ))
+  ) : (
+    <View style={styles.emptyCard}>
+      <Footprints size={26} color={COLORS.primary} />
+      <Text style={styles.emptyTitle}>No active Walk Safe sessions</Text>
+      <Text style={styles.emptyText}>
+        When a student starts Walk Safe mode, the session will appear here.
+      </Text>
+    </View>
+  )}
+</View>
 
       <View style={styles.section}>
         <SectionHeader
@@ -688,4 +811,82 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
+  walkCard: {
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.xl,
+  padding: SPACING.lg,
+  borderWidth: 1,
+  borderColor: COLORS.primaryLight,
+  marginBottom: SPACING.md,
+  ...SHADOWS.soft,
+},
+
+walkHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.md,
+},
+
+walkIcon: {
+  width: 48,
+  height: 48,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primaryLight,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+walkHeaderText: {
+  flex: 1,
+},
+
+walkTitle: {
+  fontSize: FONT_SIZE.md,
+  fontWeight: "900",
+  color: COLORS.primaryDark,
+},
+
+walkMeta: {
+  marginTop: 2,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+},
+
+walkInfoRow: {
+  marginTop: SPACING.sm,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.sm,
+},
+
+walkInfoText: {
+  flex: 1,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+},
+
+walkRiskBox: {
+  marginTop: SPACING.md,
+  backgroundColor: COLORS.primaryLight,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.sm,
+},
+
+walkRiskText: {
+  flex: 1,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.primaryDark,
+  fontWeight: "900",
+  lineHeight: 18,
+},
+
+walkActions: {
+  marginTop: SPACING.lg,
+  gap: SPACING.md,
+},
 });

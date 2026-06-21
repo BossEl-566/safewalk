@@ -24,6 +24,7 @@ type WalkSafeStore = {
   activeSessionId: string | null;
 
   startSession: (params: StartWalkSafeParams) => string;
+  setSessionBackendId: (localSessionId: string, backendId: string) => void;
   checkInSafe: (sessionId: string) => void;
   completeSession: (sessionId: string) => void;
   cancelSession: (sessionId: string) => void;
@@ -89,6 +90,19 @@ export const useWalkSafeStore = create<WalkSafeStore>()(
         }));
 
         return id;
+      },
+
+      setSessionBackendId: (localSessionId, backendId) => {
+        set((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === localSessionId
+              ? {
+                  ...session,
+                  backendId,
+                }
+              : session
+          ),
+        }));
       },
 
       checkInSafe: (sessionId) => {

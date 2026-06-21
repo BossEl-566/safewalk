@@ -20,6 +20,7 @@ export type WalkSafeNearbyRisk = {
 
 export type WalkSafeSession = {
   id: string;
+  backendId?: string;
   status: WalkSafeStatus;
 
   startLocation: WalkSafeLocation | null;

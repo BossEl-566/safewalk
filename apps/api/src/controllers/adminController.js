@@ -1,5 +1,6 @@
 const IncidentReport = require("../models/IncidentReport");
 const SOSAlert = require("../models/SOSAlert");
+const WalkSafeSession = require("../models/WalkSafeSession");
 
 async function getAdminOverview(req, res) {
   try {
@@ -10,8 +11,12 @@ async function getAdminOverview(req, res) {
       activeSOSAlerts,
       resolvedSOSAlerts,
       cancelledSOSAlerts,
+      activeWalkSafeSessions,
+      completedWalkSafeSessions,
+      cancelledWalkSafeSessions,
       latestSOSAlerts,
       latestHighRiskReports,
+      latestActiveWalks,
     ] = await Promise.all([
       IncidentReport.countDocuments(),
       IncidentReport.countDocuments({ aiRiskScore: { $gte: 70 } }),
@@ -21,10 +26,18 @@ async function getAdminOverview(req, res) {
       SOSAlert.countDocuments({ status: "resolved" }),
       SOSAlert.countDocuments({ status: "cancelled" }),
 
+      WalkSafeSession.countDocuments({ status: "active" }),
+      WalkSafeSession.countDocuments({ status: "completed" }),
+      WalkSafeSession.countDocuments({ status: "cancelled" }),
+
       SOSAlert.find({ status: "active" }).sort({ createdAt: -1 }).limit(20),
 
       IncidentReport.find({ aiRiskScore: { $gte: 70 } })
         .sort({ aiRiskScore: -1, createdAt: -1 })
+        .limit(20),
+
+      WalkSafeSession.find({ status: "active" })
+        .sort({ createdAt: -1 })
         .limit(20),
     ]);
 
@@ -38,9 +51,13 @@ async function getAdminOverview(req, res) {
           activeSOSAlerts,
           resolvedSOSAlerts,
           cancelledSOSAlerts,
+          activeWalkSafeSessions,
+          completedWalkSafeSessions,
+          cancelledWalkSafeSessions,
         },
         activeSOSAlerts: latestSOSAlerts,
         highRiskReports: latestHighRiskReports,
+        activeWalkSafeSessions: latestActiveWalks,
       },
     });
   } catch (error) {

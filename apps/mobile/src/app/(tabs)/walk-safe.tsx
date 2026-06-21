@@ -30,6 +30,7 @@ import {
   WalkSafeLocation,
   WalkSafeNearbyRisk,
 } from "../../types/walkSafe";
+import { createWalkSafeSessionApi } from "../../lib/walkSafeApi";
 
 const durationOptions = [10, 15, 20, 30, 45];
 
@@ -70,6 +71,9 @@ function ContactOption({
 export default function WalkSafeScreen() {
   const contacts = useContactStore((state) => state.contacts);
   const startSession = useWalkSafeStore((state) => state.startSession);
+  const setSessionBackendId = useWalkSafeStore(
+  (state) => state.setSessionBackendId
+);
   const localReports = useIncidentStore((state) => state.reports);
 
   const [destinationName, setDestinationName] = useState("");
@@ -98,6 +102,29 @@ export default function WalkSafeScreen() {
     startLocation: location,
     nearbyRiskWarnings,
   });
+
+  const session = useWalkSafeStore.getState().getSessionById(sessionId);
+
+  if (session) {
+    createWalkSafeSessionApi({
+      startLocation: session.startLocation,
+      destinationName: session.destinationName,
+      trustedContactId: session.trustedContactId,
+      trustedContactName: session.trustedContactName,
+      trustedContactPhone: session.trustedContactPhone,
+      expectedDurationMinutes: session.expectedDurationMinutes,
+      startedAt: session.startedAt,
+      expectedArrivalAt: session.expectedArrivalAt,
+      riskLevel: session.riskLevel,
+      nearbyRiskWarnings: session.nearbyRiskWarnings,
+    })
+      .then((backendSession) => {
+        setSessionBackendId(sessionId, backendSession.backendId ?? backendSession.id);
+      })
+      .catch((error) => {
+        console.log("Walk Safe backend sync failed:", error);
+      });
+  }
 
   router.push({
     pathname: "/walk-safe/active",

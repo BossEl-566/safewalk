@@ -12,7 +12,8 @@ type ContactInput = {
 
 type ContactStore = {
   contacts: EmergencyContact[];
-  addContact: (contact: ContactInput) => void;
+  setContacts: (contacts: EmergencyContact[]) => void;
+  addContact: (contact: ContactInput) => string;
   deleteContact: (contactId: string) => void;
   clearContacts: () => void;
 };
@@ -22,19 +23,28 @@ export const useContactStore = create<ContactStore>()(
     (set, get) => ({
       contacts: [],
 
+      setContacts: (contacts) => {
+        set({ contacts });
+      },
+
       addContact: (contact) => {
+        const id = Date.now().toString();
+
         const newContact: EmergencyContact = {
-          id: Date.now().toString(),
+          id,
           name: contact.name.trim(),
           phone: contact.phone.trim(),
           relationship: contact.relationship.trim(),
           priority: get().contacts.length + 1,
+          isPrimary: get().contacts.length === 0,
           createdAt: new Date().toISOString(),
         };
 
         set((state) => ({
           contacts: [newContact, ...state.contacts],
         }));
+
+        return id;
       },
 
       deleteContact: (contactId) => {

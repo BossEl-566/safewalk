@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const sosRoutes = require("./routes/sosRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 
 const incidentRoutes = require("./routes/incidentRoutes");
 
@@ -32,6 +33,7 @@ app.get("/health", (req, res) => {
 app.use("/api/incidents", incidentRoutes);
 app.use("/api/sos", sosRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/contacts", contactRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

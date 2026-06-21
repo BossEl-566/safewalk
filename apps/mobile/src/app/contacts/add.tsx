@@ -9,6 +9,7 @@ import { AppInput } from "../../components/AppInput";
 import { SectionHeader } from "../../components/SectionHeader";
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from "../../constants/theme";
 import { useContactStore } from "../../store/contactStore";
+import { createEmergencyContactApi } from "../../lib/contactApi";
 
 export default function AddContactScreen() {
   const addContact = useContactStore((state) => state.addContact);
@@ -17,7 +18,7 @@ export default function AddContactScreen() {
   const [phone, setPhone] = useState("");
   const [relationship, setRelationship] = useState("");
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Missing Name", "Please enter the contact's name.");
       return;
@@ -33,13 +34,30 @@ export default function AddContactScreen() {
       return;
     }
 
-    addContact({
-      name,
-      phone,
-      relationship,
-    });
+    const localContactId = addContact({
+  name,
+  phone,
+  relationship,
+});
 
-    router.back();
+try {
+  await createEmergencyContactApi({
+    name,
+    phone,
+    relationship,
+  });
+
+  console.log("Emergency contact synced to backend:", localContactId);
+} catch (error) {
+  console.log("Contact backend sync failed:", error);
+
+  Alert.alert(
+    "Saved Locally",
+    "The contact was saved on this phone, but it could not sync to the backend. Check that your API server is running."
+  );
+}
+
+router.back();
   };
 
   return (

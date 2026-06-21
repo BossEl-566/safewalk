@@ -22,6 +22,7 @@ import {
 } from "../../constants/theme";
 import { useWalkSafeStore } from "../../store/walkSafeStore";
 import { useSOSStore } from "../../store/sosStore";
+import { createSOSAlertApi } from "../../lib/sosApi";
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], {
@@ -100,14 +101,29 @@ Please check on me if I do not arrive on time.`,
           style: "destructive",
           onPress: () => {
             const alertId = createSOSAlert({
-              userName: "SafeWalk User",
-              location: session.startLocation,
-            });
+  userName: "SafeWalk User",
+  location: session.startLocation,
+});
 
-            router.push({
-              pathname: "/sos/active",
-              params: { alertId },
-            });
+const alert = useSOSStore.getState().getAlertById(alertId);
+
+if (alert) {
+  createSOSAlertApi({
+    userName: alert.userName,
+    location: alert.location,
+    message: alert.message,
+    source: "walk_safe",
+    trustedContactName: session.trustedContactName,
+    trustedContactPhone: session.trustedContactPhone,
+  }).catch((error) => {
+    console.log("Walk Safe SOS backend sync failed:", error);
+  });
+}
+
+router.push({
+  pathname: "/sos/active",
+  params: { alertId },
+});
           },
         },
       ]

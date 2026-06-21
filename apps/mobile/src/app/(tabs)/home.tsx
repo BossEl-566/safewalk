@@ -8,6 +8,7 @@ import { SafetyCard } from "../../components/SafetyCard";
 import { SectionHeader } from "../../components/SectionHeader";
 import { EmergencyButton } from "../../components/EmergencyButton";
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from "../../constants/theme";
+import { createSOSAlertApi } from "../../lib/sosApi";
 
 export default function HomeScreen() {
   const contacts = useContactStore((state) => state.contacts);
@@ -37,6 +38,21 @@ const handleSOSPress = async () => {
       userName: "SafeWalk User",
       location,
     });
+
+    const alert = useSOSStore.getState().getAlertById(alertId);
+
+if (alert) {
+  createSOSAlertApi({
+    userName: alert.userName,
+    location: alert.location,
+    message: alert.message,
+    source: "sos_button",
+    trustedContactName: contacts[0]?.name ?? "",
+    trustedContactPhone: contacts[0]?.phone ?? "",
+  }).catch((error) => {
+    console.log("SOS backend sync failed:", error);
+  });
+}
 
     router.push({
       pathname: "/sos/active",

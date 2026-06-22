@@ -5,6 +5,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   UserRound,
+  History,
+  Settings,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -52,6 +54,46 @@ export default function ProfileScreen() {
             style={styles.menuButton}
           />
         </View>
+
+       <View style={styles.menuCard}>
+  <View style={styles.menuIcon}>
+    <History size={26} color={COLORS.primary} />
+  </View>
+
+  <View style={styles.menuContent}>
+    <Text style={styles.menuTitle}>Activity History</Text>
+    <Text style={styles.menuText}>
+      View past SOS alerts, Walk Safe sessions, and incident reports.
+    </Text>
+  </View>
+
+  <AppButton
+    title="Open"
+    onPress={() => router.push("/activity")}
+    variant="secondary"
+    style={styles.menuButton}
+  />
+</View> 
+
+<View style={styles.menuCard}>
+  <View style={styles.menuIcon}>
+    <Settings size={26} color={COLORS.primary} />
+  </View>
+
+  <View style={styles.menuContent}>
+    <Text style={styles.menuTitle}>Safety Settings</Text>
+    <Text style={styles.menuText}>
+      Configure emergency numbers, Walk Safe defaults, and privacy options.
+    </Text>
+  </View>
+
+  <AppButton
+    title="Open"
+    onPress={() => router.push("/settings")}
+    variant="secondary"
+    style={styles.menuButton}
+  />
+</View>
 
         <View style={styles.menuCard}>
           <View style={[styles.menuIcon, styles.adminIcon]}>

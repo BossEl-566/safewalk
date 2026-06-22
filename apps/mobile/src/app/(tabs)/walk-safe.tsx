@@ -31,6 +31,7 @@ import {
   WalkSafeNearbyRisk,
 } from "../../types/walkSafe";
 import { createWalkSafeSessionApi } from "../../lib/walkSafeApi";
+import { useSafetySettingsStore } from "../../store/safetySettingsStore";
 
 const durationOptions = [10, 15, 20, 30, 45];
 
@@ -80,7 +81,14 @@ export default function WalkSafeScreen() {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
     contacts[0]?.id ?? null
   );
-  const [duration, setDuration] = useState(15);
+  const defaultWalkDurationMinutes = useSafetySettingsStore(
+  (state) => state.defaultWalkDurationMinutes
+);
+const riskWarningRadiusMeters = useSafetySettingsStore(
+  (state) => state.riskWarningRadiusMeters
+);
+
+const [duration, setDuration] = useState(defaultWalkDurationMinutes);
   const [loading, setLoading] = useState(false);
 
   const selectedContact = contacts.find(
@@ -169,7 +177,7 @@ export default function WalkSafeScreen() {
     const nearbyRiskWarnings = getNearbyRiskWarnings({
       currentLocation: location,
       reports: reportsForRiskCheck,
-      radiusMeters: 800,
+      radiusMeters: riskWarningRadiusMeters,
     });
 
     if (nearbyRiskWarnings.length > 0) {

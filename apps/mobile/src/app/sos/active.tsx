@@ -13,8 +13,13 @@ import { Screen } from "../../components/Screen";
 import { AppButton } from "../../components/AppButton";
 import { COLORS, FONT_SIZE, RADIUS, SHADOWS, SPACING } from "../../constants/theme";
 import { useSOSStore } from "../../store/sosStore";
+import { useSafetySettingsStore } from "../../store/safetySettingsStore";
 
 export default function ActiveSOSScreen() {
+    const ambulanceNumber = useSafetySettingsStore(
+  (state) => state.ambulanceNumber
+);
+const policeNumber = useSafetySettingsStore((state) => state.policeNumber);
   const { alertId } = useLocalSearchParams<{ alertId?: string }>();
 
   const alert = useSOSStore((state) =>
@@ -43,13 +48,13 @@ export default function ActiveSOSScreen() {
     );
   }
 
-  const handleCallAmbulance = () => {
-    Linking.openURL("tel:112");
-  };
+ const handleCallAmbulance = () => {
+  Linking.openURL(`tel:${ambulanceNumber}`);
+};
 
-  const handleCallPolice = () => {
-    Linking.openURL("tel:191");
-  };
+const handleCallPolice = () => {
+  Linking.openURL(`tel:${policeNumber}`);
+};
 
   const handleShare = async () => {
     await Share.share({
@@ -140,14 +145,14 @@ export default function ActiveSOSScreen() {
 
       <View style={styles.actions}>
         <AppButton
-          title="Call Ambulance 112"
+          title={`Call Emergency ${ambulanceNumber}`}
           onPress={handleCallAmbulance}
           variant="danger"
           icon={<Phone size={20} color={COLORS.white} />}
         />
 
         <AppButton
-          title="Call Police 191"
+          title={`Call Police ${policeNumber}`}
           onPress={handleCallPolice}
           variant="secondary"
           icon={<Phone size={20} color={COLORS.primaryDark} />}

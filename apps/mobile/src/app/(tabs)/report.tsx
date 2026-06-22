@@ -32,6 +32,7 @@ import {
 import { useIncidentStore } from "../../store/incidentStore";
 import { getCurrentLocation } from "../../lib/location";
 import { createIncidentReportApi } from "../../lib/incidentApi";
+import { useSafetySettingsStore } from "../../store/safetySettingsStore";
 
 type CategoryOption = {
   label: string;
@@ -101,6 +102,9 @@ const areaOptions: { label: string; value: IncidentAreaType }[] = [
 ];
 
 export default function ReportScreen() {
+  const anonymousReportingDefault = useSafetySettingsStore(
+  (state) => state.anonymousReportingDefault
+);
   const createReport = useIncidentStore((state) => state.createReport);
 
   const [category, setCategory] = useState<IncidentCategory>("phone_snatch");
@@ -114,7 +118,7 @@ export default function ReportScreen() {
 
   const [victimWasAlone, setVictimWasAlone] = useState(true);
   const [weaponInvolved, setWeaponInvolved] = useState(false);
-  const [anonymous, setAnonymous] = useState(true);
+  const [anonymous, setAnonymous] = useState(anonymousReportingDefault);
 
   const [loading, setLoading] = useState(false);
 

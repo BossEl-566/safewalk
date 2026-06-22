@@ -24,6 +24,7 @@ import {
   SPACING,
 } from "../../constants/theme";
 import { useSafetySettingsStore } from "../../store/safetySettingsStore";
+import { useOnboardingStore } from "../../store/onboardingStore";
 
 const durationOptions = [10, 15, 20, 30, 45, 60];
 const radiusOptions = [300, 500, 800, 1000, 1500];
@@ -58,6 +59,7 @@ function ToggleRow({
 }
 
 export default function SettingsScreen() {
+    const resetOnboarding = useOnboardingStore((state) => state.resetOnboarding);
   const defaultWalkDurationMinutes = useSafetySettingsStore(
     (state) => state.defaultWalkDurationMinutes
   );
@@ -115,6 +117,11 @@ export default function SettingsScreen() {
       ]
     );
   };
+
+  const handleReplayOnboarding = () => {
+  resetOnboarding();
+  router.replace("/onboarding");
+};
 
   return (
     <Screen scroll>
@@ -267,6 +274,13 @@ export default function SettingsScreen() {
           them to the user profile in MongoDB.
         </Text>
       </View>
+
+      <AppButton
+  title="Replay Onboarding"
+  onPress={handleReplayOnboarding}
+  variant="secondary"
+  style={styles.replayButton}
+/>
 
       <AppButton
         title="Reset Settings"
@@ -481,4 +495,7 @@ const styles = StyleSheet.create({
   resetButton: {
     marginTop: SPACING.xl,
   },
+  replayButton: {
+  marginTop: SPACING.xl,
+},
 });

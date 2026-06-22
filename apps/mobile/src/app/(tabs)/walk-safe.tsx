@@ -33,6 +33,7 @@ import {
 import { createWalkSafeSessionApi } from "../../lib/walkSafeApi";
 import { useSafetySettingsStore } from "../../store/safetySettingsStore";
 import { WalkSafeMode } from "../../types/walkSafe";
+import { Navigation } from "lucide-react-native";
 
 const durationOptions = [10, 15, 20, 30, 45];
 
@@ -246,6 +247,26 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
           title="Where are you going?"
           subtitle="Enter your hostel, apartment, lecture hall, library, bus stop, or any destination."
         />
+
+        <View style={styles.safeRouteCard}>
+  <View style={styles.safeRouteIcon}>
+    <Navigation size={26} color={COLORS.primary} />
+  </View>
+
+  <View style={styles.safeRouteContent}>
+    <Text style={styles.safeRouteTitle}>Plan a Safer Route</Text>
+    <Text style={styles.safeRouteText}>
+      Compare route options before walking to hostel or off-campus areas.
+    </Text>
+  </View>
+
+  <AppButton
+    title="Plan"
+    onPress={() => router.push("/safe-routes")}
+    variant="secondary"
+    style={styles.safeRouteButton}
+  />
+</View>
 
         <View style={styles.modeSection}>
   <Text style={styles.modeSectionTitle}>Choose monitoring mode</Text>
@@ -627,5 +648,49 @@ modeText: {
 
 modeTextActive: {
   color: COLORS.primaryLight,
+},
+safeRouteCard: {
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.xl,
+  padding: SPACING.lg,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.md,
+  marginBottom: SPACING.xl,
+  ...SHADOWS.soft,
+},
+
+safeRouteIcon: {
+  width: 52,
+  height: 52,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primaryLight,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+safeRouteContent: {
+  flex: 1,
+},
+
+safeRouteTitle: {
+  fontSize: FONT_SIZE.md,
+  fontWeight: "900",
+  color: COLORS.text,
+},
+
+safeRouteText: {
+  marginTop: 2,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+  lineHeight: 18,
+},
+
+safeRouteButton: {
+  minHeight: 42,
+  paddingHorizontal: SPACING.md,
 },
 });

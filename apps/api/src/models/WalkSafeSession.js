@@ -58,6 +58,12 @@ const NearbyRiskWarningSchema = new mongoose.Schema(
 
 const WalkSafeSessionSchema = new mongoose.Schema(
   {
+    mode: {
+  type: String,
+  enum: ["walk_safe", "walk_home"],
+  default: "walk_safe",
+  index: true,
+},
     status: {
       type: String,
       enum: ["active", "completed", "cancelled"],

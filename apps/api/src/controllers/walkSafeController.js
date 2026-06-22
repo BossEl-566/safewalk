@@ -3,6 +3,7 @@ const WalkSafeSession = require("../models/WalkSafeSession");
 async function createWalkSafeSession(req, res) {
   try {
     const {
+        mode = "walk_safe",
       startLocation = null,
       destinationName,
       trustedContactId = "",
@@ -42,6 +43,7 @@ async function createWalkSafeSession(req, res) {
       : new Date(startDate.getTime() + Number(expectedDurationMinutes) * 60000);
 
     const session = await WalkSafeSession.create({
+        mode,
       status: "active",
       startLocation,
       destinationName,

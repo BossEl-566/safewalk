@@ -82,7 +82,7 @@ export async function getActivityHistoryApi(): Promise<ActivityItem[]> {
     (session: WalkSafeSession) => ({
       id: session.id,
       type: "walk_safe",
-      title: "Walk Safe Session",
+      title: session.mode === "walk_home" ? "Walk Home Session" : "Walk Safe Session",
       subtitle: `${session.status} • ${session.destinationName}`,
       description: `Trusted contact: ${
         session.trustedContactName

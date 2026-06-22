@@ -4,12 +4,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
   WalkSafeLocation,
+  WalkSafeMode,
   WalkSafeNearbyRisk,
   WalkSafeRiskLevel,
   WalkSafeSession,
 } from "../types/walkSafe";
 
 type StartWalkSafeParams = {
+  mode?: WalkSafeMode;
   destinationName: string;
   trustedContactId: string;
   trustedContactName: string;
@@ -64,25 +66,26 @@ export const useWalkSafeStore = create<WalkSafeStore>()(
         const nearbyRiskWarnings = params.nearbyRiskWarnings ?? [];
 
         const newSession: WalkSafeSession = {
-          id,
-          status: "active",
-          startLocation: params.startLocation,
-          destinationName: params.destinationName.trim(),
-          trustedContactId: params.trustedContactId,
-          trustedContactName: params.trustedContactName,
-          trustedContactPhone: params.trustedContactPhone,
-          expectedDurationMinutes: params.expectedDurationMinutes,
-          startedAt,
-          expectedArrivalAt: getExpectedArrival(
-            startedAt,
-            params.expectedDurationMinutes
-          ),
-          riskLevel: calculateInitialRiskLevel(
-            params.expectedDurationMinutes,
-            nearbyRiskWarnings
-          ),
-          nearbyRiskWarnings,
-        };
+  id,
+  mode: params.mode ?? "walk_safe",
+  status: "active",
+  startLocation: params.startLocation,
+  destinationName: params.destinationName.trim(),
+  trustedContactId: params.trustedContactId,
+  trustedContactName: params.trustedContactName,
+  trustedContactPhone: params.trustedContactPhone,
+  expectedDurationMinutes: params.expectedDurationMinutes,
+  startedAt,
+  expectedArrivalAt: getExpectedArrival(
+    startedAt,
+    params.expectedDurationMinutes
+  ),
+  riskLevel: calculateInitialRiskLevel(
+    params.expectedDurationMinutes,
+    nearbyRiskWarnings
+  ),
+  nearbyRiskWarnings,
+};
 
         set((state) => ({
           sessions: [newSession, ...state.sessions],

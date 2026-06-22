@@ -32,6 +32,7 @@ import {
 } from "../../types/walkSafe";
 import { createWalkSafeSessionApi } from "../../lib/walkSafeApi";
 import { useSafetySettingsStore } from "../../store/safetySettingsStore";
+import { WalkSafeMode } from "../../types/walkSafe";
 
 const durationOptions = [10, 15, 20, 30, 45];
 
@@ -95,6 +96,8 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
     (contact) => contact.id === selectedContactId
   );
 
+  const [mode, setMode] = useState<WalkSafeMode>("walk_safe");
+
   const startWalkSafeSession = (
   location: WalkSafeLocation,
   nearbyRiskWarnings: WalkSafeNearbyRisk[]
@@ -102,20 +105,22 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
   if (!selectedContact) return;
 
   const sessionId = startSession({
-    destinationName,
-    trustedContactId: selectedContact.id,
-    trustedContactName: selectedContact.name,
-    trustedContactPhone: selectedContact.phone,
-    expectedDurationMinutes: duration,
-    startLocation: location,
-    nearbyRiskWarnings,
-  });
+  mode,
+  destinationName,
+  trustedContactId: selectedContact.id,
+  trustedContactName: selectedContact.name,
+  trustedContactPhone: selectedContact.phone,
+  expectedDurationMinutes: duration,
+  startLocation: location,
+  nearbyRiskWarnings,
+});
 
   const session = useWalkSafeStore.getState().getSessionById(sessionId);
 
   if (session) {
     createWalkSafeSessionApi({
-      startLocation: session.startLocation,
+  mode: session.mode,
+  startLocation: session.startLocation,
       destinationName: session.destinationName,
       trustedContactId: session.trustedContactId,
       trustedContactName: session.trustedContactName,
@@ -242,13 +247,74 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
           subtitle="Enter your hostel, apartment, lecture hall, library, bus stop, or any destination."
         />
 
+        <View style={styles.modeSection}>
+  <Text style={styles.modeSectionTitle}>Choose monitoring mode</Text>
+
+  <View style={styles.modeGrid}>
+    <Pressable
+      onPress={() => setMode("walk_safe")}
+      style={[
+        styles.modeCard,
+        mode === "walk_safe" && styles.modeCardActive,
+      ]}
+    >
+      <Text
+        style={[
+          styles.modeTitle,
+          mode === "walk_safe" && styles.modeTitleActive,
+        ]}
+      >
+        Walk Safe
+      </Text>
+
+      <Text
+        style={[
+          styles.modeText,
+          mode === "walk_safe" && styles.modeTextActive,
+        ]}
+      >
+        General monitored walking.
+      </Text>
+    </Pressable>
+
+    <Pressable
+      onPress={() => setMode("walk_home")}
+      style={[
+        styles.modeCard,
+        mode === "walk_home" && styles.modeCardActive,
+      ]}
+    >
+      <Text
+        style={[
+          styles.modeTitle,
+          mode === "walk_home" && styles.modeTitleActive,
+        ]}
+      >
+        Walk Home
+      </Text>
+
+      <Text
+        style={[
+          styles.modeText,
+          mode === "walk_home" && styles.modeTextActive,
+        ]}
+      >
+        Hostel or off-campus route.
+      </Text>
+    </Pressable>
+  </View>
+</View>
+
         <AppInput
-          label="Destination"
-          placeholder="Example: Ayeduase Hostel"
-          value={destinationName}
-          onChangeText={setDestinationName}
-          autoCapitalize="words"
-        />
+  label={mode === "walk_home" ? "Hostel / Home Destination" : "Destination"}
+  value={destinationName}
+  onChangeText={setDestinationName}
+  placeholder={
+    mode === "walk_home"
+      ? "e.g. Ayeduase Hostel, Kotei, Bomso"
+      : "e.g. Library, lecture hall, hostel"
+  }
+/>
       </View>
 
       <View style={styles.section}>
@@ -329,7 +395,7 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
       </View>
 
       <AppButton
-        title="Start Walk Safe"
+        title={mode === "walk_home" ? "Start Walk Home" : "Start Walk Safe"}
         onPress={handleStartWalkSafe}
         loading={loading}
         disabled={loading}
@@ -510,4 +576,56 @@ const styles = StyleSheet.create({
   startButton: {
     marginTop: SPACING.xl,
   },
+  modeSection: {
+  marginBottom: SPACING.xl,
+},
+
+modeSectionTitle: {
+  fontSize: FONT_SIZE.sm,
+  fontWeight: "900",
+  color: COLORS.text,
+  marginBottom: SPACING.sm,
+},
+
+modeGrid: {
+  flexDirection: "row",
+  gap: SPACING.md,
+},
+
+modeCard: {
+  flex: 1,
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.xl,
+  padding: SPACING.lg,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  ...SHADOWS.soft,
+},
+
+modeCardActive: {
+  backgroundColor: COLORS.primary,
+  borderColor: COLORS.primary,
+},
+
+modeTitle: {
+  fontSize: FONT_SIZE.md,
+  fontWeight: "900",
+  color: COLORS.text,
+},
+
+modeTitleActive: {
+  color: COLORS.white,
+},
+
+modeText: {
+  marginTop: SPACING.xs,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+  lineHeight: 18,
+},
+
+modeTextActive: {
+  color: COLORS.primaryLight,
+},
 });

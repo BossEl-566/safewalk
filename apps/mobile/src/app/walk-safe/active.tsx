@@ -152,6 +152,7 @@ router.push({
           text: "Yes, I arrived",
           onPress: () => {
             completeSession(session.id);
+            const modeLabel = session.mode === "walk_home" ? "Walk Home" : "Walk Safe";
 
 if (session.backendId) {
   completeWalkSafeSessionApi(session.backendId).catch((error) => {

@@ -1,5 +1,7 @@
 export type WalkSafeStatus = "active" | "completed" | "cancelled";
 
+export type WalkSafeMode = "walk_safe" | "walk_home";
+
 export type WalkSafeRiskLevel = "low" | "medium" | "high" | "critical";
 
 export type WalkSafeLocation = {
@@ -21,6 +23,8 @@ export type WalkSafeNearbyRisk = {
 export type WalkSafeSession = {
   id: string;
   backendId?: string;
+
+  mode: WalkSafeMode;
   status: WalkSafeStatus;
 
   startLocation: WalkSafeLocation | null;

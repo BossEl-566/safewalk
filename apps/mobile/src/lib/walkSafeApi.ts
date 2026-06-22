@@ -1,5 +1,6 @@
 import {
   WalkSafeLocation,
+  WalkSafeMode,
   WalkSafeNearbyRisk,
   WalkSafeRiskLevel,
   WalkSafeSession,
@@ -7,6 +8,7 @@ import {
 import { api } from "./api";
 
 export type CreateWalkSafeSessionPayload = {
+  mode: WalkSafeMode;
   startLocation: WalkSafeLocation | null;
   destinationName: string;
   trustedContactId: string;
@@ -23,6 +25,8 @@ function normalizeWalkSafeSession(session: any): WalkSafeSession {
   return {
     id: session.id ?? session._id ?? String(Date.now()),
     backendId: session._id ?? session.id,
+
+    mode: session.mode ?? "walk_safe",
     status: session.status ?? "active",
 
     startLocation: session.startLocation ?? null,

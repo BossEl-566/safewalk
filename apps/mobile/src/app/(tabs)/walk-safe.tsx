@@ -254,6 +254,26 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
   </View>
 
   <View style={styles.safeRouteContent}>
+    <Text style={styles.safeRouteTitle}>Live Safe Navigation</Text>
+    <Text style={styles.safeRouteText}>
+      Search a destination, view the route, and let SafeWalk AI monitor your movement.
+    </Text>
+  </View>
+
+  <AppButton
+    title="Open"
+    onPress={() => router.push("/navigation")}
+    variant="secondary"
+    style={styles.safeRouteButton}
+  />
+</View>
+
+        <View style={styles.safeRouteCard}>
+  <View style={styles.safeRouteIcon}>
+    <Navigation size={26} color={COLORS.primary} />
+  </View>
+
+  <View style={styles.safeRouteContent}>
     <Text style={styles.safeRouteTitle}>Plan a Safer Route</Text>
     <Text style={styles.safeRouteText}>
       Compare route options before walking to hostel or off-campus areas.

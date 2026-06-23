@@ -9,6 +9,8 @@ const contactRoutes = require("./routes/contactRoutes");
 const incidentRoutes = require("./routes/incidentRoutes");
 const walkSafeRoutes = require("./routes/walkSafeRoutes");
 const safeRouteRoutes = require("./routes/safeRouteRoutes");
+const navigationRoutes = require("./routes/navigationRoutes");
+const placesRoutes = require("./routes/placesRoutes");
 
 const app = express();
 
@@ -38,6 +40,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/contacts", contactRoutes);
 app.use("/api/walk-safe", walkSafeRoutes);
 app.use("/api/safe-routes", safeRouteRoutes);
+app.use("/api/navigation", navigationRoutes);
+app.use("/api/places", placesRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

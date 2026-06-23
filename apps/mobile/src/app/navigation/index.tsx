@@ -1,0 +1,963 @@
+import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import * as Location from "expo-location";
+import { router } from "expo-router";
+import {
+  Alert,
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import MapView, {
+  Marker,
+  Polyline,
+  PROVIDER_GOOGLE,
+  Region,
+} from "react-native-maps";
+import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  Clock,
+  Footprints,
+  LocateFixed,
+  MapPin,
+  Navigation,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  X,
+} from "lucide-react-native";
+
+import { AppButton } from "../../components/AppButton";
+import {
+  COLORS,
+  FONT_SIZE,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from "../../constants/theme";
+import { calculateSafeNavigationRouteApi } from "../../lib/navigationApi";
+import {
+  autocompletePlacesApi,
+  getPlaceDetailsApi,
+} from "../../lib/placeApi";
+import { MapCoordinate, SafeNavigationRoute } from "../../types/navigation";
+import { PlaceSuggestion } from "../../types/place";
+
+const DEFAULT_REGION: Region = {
+  latitude: 6.6745,
+  longitude: -1.5716,
+  latitudeDelta: 0.025,
+  longitudeDelta: 0.025,
+};
+
+function getRiskColor(score: number) {
+  if (score >= 85) return COLORS.danger;
+  if (score >= 70) return COLORS.danger;
+  if (score >= 40) return COLORS.warning;
+  return COLORS.primary;
+}
+
+function formatDistance(meters: number) {
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(1)} km`;
+  }
+
+  return `${Math.round(meters)} m`;
+}
+
+function formatGoogleDuration(duration: string) {
+  if (!duration) return "Unknown time";
+
+  const seconds = Number(duration.replace("s", ""));
+
+  if (Number.isNaN(seconds)) return duration;
+
+  const minutes = Math.round(seconds / 60);
+
+  if (minutes < 60) return `${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  return `${hours}h ${remainingMinutes}m`;
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function getDistanceMeters(pointA: MapCoordinate, pointB: MapCoordinate) {
+  const earthRadiusMeters = 6371000;
+
+  const lat1 = toRadians(pointA.latitude);
+  const lat2 = toRadians(pointB.latitude);
+
+  const deltaLat = toRadians(pointB.latitude - pointA.latitude);
+  const deltaLng = toRadians(pointB.longitude - pointA.longitude);
+
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(deltaLng / 2) *
+      Math.sin(deltaLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusMeters * c;
+}
+
+function findNearestRouteIndex(
+  userLocation: MapCoordinate,
+  routeCoordinates: MapCoordinate[]
+) {
+  if (routeCoordinates.length === 0) return 0;
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  routeCoordinates.forEach((coordinate, index) => {
+    const distance = getDistanceMeters(userLocation, coordinate);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return {
+    nearestIndex,
+    nearestDistance,
+  };
+}
+
+export default function NavigationScreen() {
+  const mapRef = useRef<MapView | null>(null);
+  const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
+    null
+  );
+
+  const bottomSheetRef = useRef<BottomSheet | null>(null);
+  const snapPoints = useMemo(() => ["22%", "48%", "78%"], []);
+
+  const [userLocation, setUserLocation] = useState<MapCoordinate | null>(null);
+  const [destination, setDestination] = useState<MapCoordinate | null>(null);
+  const [destinationName, setDestinationName] = useState("");
+  const [searchText, setSearchText] = useState("");
+
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [loadingRoute, setLoadingRoute] = useState(false);
+
+  const [route, setRoute] = useState<SafeNavigationRoute | null>(null);
+  const [passedRoute, setPassedRoute] = useState<MapCoordinate[]>([]);
+  const [remainingRoute, setRemainingRoute] = useState<MapCoordinate[]>([]);
+  const [isTracking, setIsTracking] = useState(false);
+  const [offRouteWarningShown, setOffRouteWarningShown] = useState(false);
+
+  const routeRiskColor = route ? getRiskColor(route.riskScore) : COLORS.primary;
+
+  const focusMapOnPoints = useCallback(
+    (points: MapCoordinate[]) => {
+      if (!mapRef.current || points.length === 0) return;
+
+      mapRef.current.fitToCoordinates(points, {
+        edgePadding: {
+          top: 130,
+          right: 55,
+          bottom: 280,
+          left: 55,
+        },
+        animated: true,
+      });
+    },
+    []
+  );
+
+  const handleUseCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Location Permission Needed",
+          "SafeWalk AI needs your current location to calculate a route."
+        );
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const coordinate = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+
+      setUserLocation(coordinate);
+
+      mapRef.current?.animateToRegion(
+        {
+          ...coordinate,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
+        },
+        600
+      );
+    } catch (error) {
+      Alert.alert("Location Error", "Could not get your current location.");
+    }
+  };
+
+  const handleSearchChange = async (value: string) => {
+    setSearchText(value);
+    setDestinationName(value);
+    setRoute(null);
+    setPassedRoute([]);
+    setRemainingRoute([]);
+
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      setSearching(true);
+      const result = await autocompletePlacesApi(value);
+      setSuggestions(result);
+    } catch (error) {
+      console.log("Autocomplete failed:", error);
+      setSuggestions([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelectSuggestion = async (suggestion: PlaceSuggestion) => {
+    try {
+      setSearching(true);
+      setSuggestions([]);
+      setSearchText(suggestion.description);
+      setDestinationName(suggestion.description);
+
+      const details = await getPlaceDetailsApi(suggestion.placeId);
+
+      if (!details.location) {
+        Alert.alert("No Location", "This place has no GPS coordinates.");
+        return;
+      }
+
+      setDestination(details.location);
+
+      mapRef.current?.animateToRegion(
+        {
+          latitude: details.location.latitude,
+          longitude: details.location.longitude,
+          latitudeDelta: 0.015,
+          longitudeDelta: 0.015,
+        },
+        600
+      );
+    } catch (error) {
+      Alert.alert("Place Error", "Could not load selected place details.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleCalculateRoute = async () => {
+    if (!userLocation) {
+      await handleUseCurrentLocation();
+    }
+
+    const currentLocation = userLocation;
+
+    if (!currentLocation) {
+      Alert.alert(
+        "Missing Location",
+        "Tap the locate button first so SafeWalk AI can know where you are."
+      );
+      return;
+    }
+
+    if (!destination) {
+      Alert.alert("Missing Destination", "Please search and select a destination.");
+      return;
+    }
+
+    try {
+      setLoadingRoute(true);
+
+      const result = await calculateSafeNavigationRouteApi({
+        origin: currentLocation,
+        destination,
+        travelMode: "WALK",
+        selectedHour: new Date().getHours(),
+      });
+
+      if (!result.recommendedRoute) {
+        Alert.alert("No Route", "Google could not return a route.");
+        return;
+      }
+
+      const recommended = result.recommendedRoute;
+
+      setRoute(recommended);
+      setPassedRoute([]);
+      setRemainingRoute(recommended.coordinates);
+      setOffRouteWarningShown(false);
+
+      focusMapOnPoints([
+        currentLocation,
+        destination,
+        ...recommended.coordinates,
+      ]);
+
+      bottomSheetRef.current?.snapToIndex(1);
+    } catch (error) {
+      console.log("Route calculation failed:", error);
+      Alert.alert(
+        "Route Failed",
+        "Could not calculate route. Check your Google Routes API key and backend."
+      );
+    } finally {
+      setLoadingRoute(false);
+    }
+  };
+
+  const updatePassedAndRemainingRoute = useCallback(
+    (location: MapCoordinate) => {
+      if (!route?.coordinates.length) return;
+
+      const nearest = findNearestRouteIndex(location, route.coordinates);
+
+      if (typeof nearest === "number") return;
+
+      const passed = route.coordinates.slice(0, nearest.nearestIndex + 1);
+      const remaining = route.coordinates.slice(nearest.nearestIndex);
+
+      setPassedRoute(passed);
+      setRemainingRoute(remaining);
+
+      if (nearest.nearestDistance > 80 && !offRouteWarningShown) {
+        setOffRouteWarningShown(true);
+
+        Alert.alert(
+          "Route Warning",
+          "You appear to be moving away from the recommended route. SafeWalk AI suggests returning to the safer route."
+        );
+      }
+
+      const nearbyHighRisk = route.nearbyReports.find(
+        (report) => report.aiRiskScore >= 70
+      );
+
+      if (nearbyHighRisk && nearest.nearestDistance < 120) {
+        // We keep this simple for now to avoid repeated alerts.
+        console.log("High-risk report near route:", nearbyHighRisk);
+      }
+    },
+    [route, offRouteWarningShown]
+  );
+
+  const handleStartTracking = async () => {
+    if (!route) {
+      Alert.alert("No Route", "Calculate a route first.");
+      return;
+    }
+
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Location Permission Needed",
+          "SafeWalk AI needs location access to monitor your route."
+        );
+        return;
+      }
+
+      if (locationSubscriptionRef.current) {
+        locationSubscriptionRef.current.remove();
+      }
+
+      setIsTracking(true);
+
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 5,
+          timeInterval: 3000,
+        },
+        (position) => {
+          const coordinate = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+
+          setUserLocation(coordinate);
+          updatePassedAndRemainingRoute(coordinate);
+
+          mapRef.current?.animateCamera(
+            {
+              center: coordinate,
+              zoom: 17,
+            },
+            {
+              duration: 600,
+            }
+          );
+        }
+      );
+
+      locationSubscriptionRef.current = subscription;
+
+      bottomSheetRef.current?.snapToIndex(0);
+
+      Alert.alert(
+        "Walk Home Started",
+        "SafeWalk AI is now monitoring your movement on the recommended route."
+      );
+    } catch (error) {
+      Alert.alert("Tracking Error", "Could not start live route tracking.");
+    }
+  };
+
+  const handleStopTracking = () => {
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+    setIsTracking(false);
+  };
+
+  const handleClearDestination = () => {
+    setDestination(null);
+    setDestinationName("");
+    setSearchText("");
+    setSuggestions([]);
+    setRoute(null);
+    setPassedRoute([]);
+    setRemainingRoute([]);
+    setIsTracking(false);
+    handleStopTracking();
+  };
+
+  const showRoute = Boolean(route && remainingRoute.length > 0);
+
+  return (
+    <View style={styles.container}>
+      <MapView
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        initialRegion={DEFAULT_REGION}
+        showsUserLocation
+        showsMyLocationButton={false}
+        followsUserLocation={false}
+      >
+        {destination ? (
+          <Marker coordinate={destination}>
+            <View style={styles.destinationMarker}>
+              <MapPin size={23} color={COLORS.white} />
+            </View>
+          </Marker>
+        ) : null}
+
+        {userLocation ? (
+          <Marker coordinate={userLocation}>
+            <View style={styles.userMarkerOuter}>
+              <View style={styles.userMarkerInner} />
+            </View>
+          </Marker>
+        ) : null}
+
+        {passedRoute.length > 1 ? (
+          <Polyline
+            coordinates={passedRoute}
+            strokeWidth={7}
+            strokeColor="#94A3B8"
+            lineCap="round"
+            lineJoin="round"
+          />
+        ) : null}
+
+        {showRoute ? (
+          <Polyline
+            coordinates={remainingRoute}
+            strokeWidth={7}
+            strokeColor={routeRiskColor}
+            lineCap="round"
+            lineJoin="round"
+          />
+        ) : null}
+      </MapView>
+
+      <View style={styles.topPanel}>
+        <View style={styles.topRow}>
+          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+            <ChevronLeft size={24} color={COLORS.text} />
+          </Pressable>
+
+          <View style={styles.searchBox}>
+            <Search size={19} color={COLORS.mutedText} />
+
+            <TextInput
+              value={searchText}
+              onChangeText={handleSearchChange}
+              placeholder="Where are you going?"
+              placeholderTextColor={COLORS.softText}
+              style={styles.searchInput}
+            />
+
+            {searchText.length > 0 ? (
+              <Pressable onPress={handleClearDestination}>
+                <X size={18} color={COLORS.mutedText} />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        {suggestions.length > 0 ? (
+          <View style={styles.suggestionsCard}>
+            {suggestions.map((suggestion) => (
+              <Pressable
+                key={suggestion.placeId}
+                onPress={() => handleSelectSuggestion(suggestion)}
+                style={styles.suggestionItem}
+              >
+                <MapPin size={18} color={COLORS.primary} />
+
+                <View style={styles.suggestionTextBox}>
+                  <Text style={styles.suggestionMain}>
+                    {suggestion.mainText || suggestion.description}
+                  </Text>
+                  <Text style={styles.suggestionSecondary}>
+                    {suggestion.secondaryText}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+
+            {searching ? (
+              <View style={styles.suggestionLoading}>
+                <ActivityIndicator color={COLORS.primary} />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+
+      <Pressable
+        onPress={handleUseCurrentLocation}
+        style={styles.locateButton}
+      >
+        <LocateFixed size={24} color={COLORS.primary} />
+      </Pressable>
+
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={0}
+        snapPoints={snapPoints}
+        backgroundStyle={styles.bottomSheetBackground}
+        handleIndicatorStyle={styles.bottomSheetHandle}
+      >
+        <BottomSheetView style={styles.sheetContent}>
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetIcon}>
+              <Navigation size={25} color={COLORS.primary} />
+            </View>
+
+            <View style={styles.sheetHeaderText}>
+              <Text style={styles.sheetTitle}>Safe Navigation</Text>
+              <Text style={styles.sheetSubtitle}>
+                Uber-style route monitoring for Walk Home
+              </Text>
+            </View>
+          </View>
+
+          {destinationName ? (
+            <View style={styles.destinationBox}>
+              <MapPin size={18} color={COLORS.primary} />
+              <Text style={styles.destinationText}>{destinationName}</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyBox}>
+              <Search size={20} color={COLORS.mutedText} />
+              <Text style={styles.emptyText}>
+                Search and select a destination to calculate a safe route.
+              </Text>
+            </View>
+          )}
+
+          {route ? (
+            <>
+              <View style={styles.routeStatsGrid}>
+                <View style={styles.routeStat}>
+                  <Clock size={18} color={COLORS.primary} />
+                  <Text style={styles.routeStatValue}>
+                    {formatGoogleDuration(route.duration)}
+                  </Text>
+                  <Text style={styles.routeStatLabel}>ETA</Text>
+                </View>
+
+                <View style={styles.routeStat}>
+                  <Footprints size={18} color={COLORS.primary} />
+                  <Text style={styles.routeStatValue}>
+                    {formatDistance(route.distanceMeters)}
+                  </Text>
+                  <Text style={styles.routeStatLabel}>Distance</Text>
+                </View>
+
+                <View style={styles.routeStat}>
+                  <ShieldAlert size={18} color={routeRiskColor} />
+                  <Text style={[styles.routeStatValue, { color: routeRiskColor }]}>
+                    {route.riskScore}/100
+                  </Text>
+                  <Text style={styles.routeStatLabel}>Risk</Text>
+                </View>
+              </View>
+
+              <View style={styles.riskBox}>
+                <View style={styles.riskHeader}>
+                  <ShieldCheck size={19} color={routeRiskColor} />
+                  <Text style={[styles.riskTitle, { color: routeRiskColor }]}>
+                    {route.riskLevel.toUpperCase()} RISK ROUTE
+                  </Text>
+                </View>
+
+                {route.reasons.slice(0, 3).map((reason, index) => (
+                  <View key={index} style={styles.reasonRow}>
+                    <AlertTriangle size={14} color={routeRiskColor} />
+                    <Text style={styles.reasonText}>{reason}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          <View style={styles.actionArea}>
+            <AppButton
+              title={loadingRoute ? "Calculating..." : "Calculate Safe Route"}
+              onPress={handleCalculateRoute}
+              loading={loadingRoute}
+              disabled={loadingRoute}
+            />
+
+            {route ? (
+              <AppButton
+                title={isTracking ? "Tracking Active" : "Start Walk Home"}
+                onPress={handleStartTracking}
+                variant={isTracking ? "secondary" : "primary"}
+                disabled={isTracking}
+              />
+            ) : null}
+
+            {isTracking ? (
+              <AppButton
+                title="Stop Tracking"
+                onPress={handleStopTracking}
+                variant="ghost"
+              />
+            ) : null}
+          </View>
+        </BottomSheetView>
+      </BottomSheet>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  map: {
+    flex: 1,
+  },
+
+  topPanel: {
+    position: "absolute",
+    top: 52,
+    left: SPACING.lg,
+    right: SPACING.lg,
+    zIndex: 10,
+  },
+
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  iconButton: {
+    width: 46,
+    height: 46,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    ...SHADOWS.soft,
+  },
+
+  searchBox: {
+    flex: 1,
+    height: 50,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+
+  suggestionsCard: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    ...SHADOWS.soft,
+  },
+
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+
+  suggestionTextBox: {
+    flex: 1,
+  },
+
+  suggestionMain: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  suggestionSecondary: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "700",
+    color: COLORS.mutedText,
+  },
+
+  suggestionLoading: {
+    padding: SPACING.md,
+  },
+
+  locateButton: {
+    position: "absolute",
+    right: SPACING.lg,
+    bottom: 255,
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    ...SHADOWS.soft,
+  },
+
+  userMarkerOuter: {
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.full,
+    backgroundColor: "rgba(37, 99, 235, 0.20)",
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  userMarkerInner: {
+    width: 14,
+    height: 14,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.info,
+  },
+
+  destinationMarker: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: COLORS.white,
+  },
+
+  bottomSheetBackground: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+
+  bottomSheetHandle: {
+    backgroundColor: COLORS.border,
+    width: 46,
+  },
+
+  sheetContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
+
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+
+  sheetIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sheetHeaderText: {
+    flex: 1,
+  },
+
+  sheetTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  sheetSubtitle: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+  },
+
+  destinationBox: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  destinationText: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+    color: COLORS.primaryDark,
+  },
+
+  emptyBox: {
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  emptyText: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
+
+  routeStatsGrid: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    gap: SPACING.sm,
+  },
+
+  routeStat: {
+    flex: 1,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: "center",
+  },
+
+  routeStatValue: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  routeStatLabel: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "800",
+    color: COLORS.mutedText,
+    textTransform: "uppercase",
+  },
+
+  riskBox: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  riskHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+
+  riskTitle: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+  },
+
+  reasonRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+
+  reasonText: {
+    flex: 1,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.text,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+
+  actionArea: {
+    marginTop: SPACING.lg,
+    gap: SPACING.md,
+  },
+});

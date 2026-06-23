@@ -7,11 +7,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
-    
+
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.safewalkai.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -28,10 +29,17 @@
     "plugins": [
       "expo-router",
       [
+        "react-native-maps",
+        {
+          "andriodGoogleMapsApiKey": "AIzaSyA0g1r6k5J7n8l9m0oP1q2r3s4t5u6v7w8"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
           "android": {
+            "package": "com.safewalkai.mobile",
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
           }

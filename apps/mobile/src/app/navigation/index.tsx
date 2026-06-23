@@ -5,6 +5,7 @@ import {
   Alert,
   ActivityIndicator,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -46,6 +47,14 @@ import {
 } from "../../lib/placeApi";
 import { MapCoordinate, SafeNavigationRoute } from "../../types/navigation";
 import { PlaceSuggestion } from "../../types/place";
+import {
+  createLiveShareSessionApi,
+  updateLiveShareLocationApi,
+  checkInLiveShareSessionApi,
+  completeLiveShareSessionApi,
+  cancelLiveShareSessionApi,
+} from "../../lib/liveShareApi";
+import { useLiveShareStore } from "../../store/liveShareStore";
 
 const DEFAULT_REGION: Region = {
   latitude: 6.6745,
@@ -136,6 +145,9 @@ function findNearestRouteIndex(
 }
 
 export default function NavigationScreen() {
+  const activeShare = useLiveShareStore((state) => state.activeShare);
+const setActiveShare = useLiveShareStore((state) => state.setActiveShare);
+const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
   const mapRef = useRef<MapView | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
@@ -159,6 +171,10 @@ export default function NavigationScreen() {
   const [isTracking, setIsTracking] = useState(false);
   const [offRouteWarningShown, setOffRouteWarningShown] = useState(false);
 
+  const [friendName, setFriendName] = useState("");
+const [friendPhone, setFriendPhone] = useState("");
+const [creatingShare, setCreatingShare] = useState(false);
+
   const routeRiskColor = route ? getRiskColor(route.riskScore) : COLORS.primary;
 
   const focusMapOnPoints = useCallback(
@@ -177,6 +193,22 @@ export default function NavigationScreen() {
     },
     []
   );
+
+  const handleSafeCheckIn = async () => {
+  if (!activeShare?.shareToken) {
+    Alert.alert("No Active Share", "Start Walk Home first.");
+    return;
+  }
+
+  try {
+    const updated = await checkInLiveShareSessionApi(activeShare.shareToken);
+    setActiveShare(updated);
+
+    Alert.alert("Check-in Sent", "Your friend can now see that you are safe.");
+  } catch (error) {
+    Alert.alert("Check-in Failed", "Could not send your safety check-in.");
+  }
+};
 
   const handleUseCurrentLocation = async () => {
     try {
@@ -365,74 +397,171 @@ export default function NavigationScreen() {
     [route, offRouteWarningShown]
   );
 
-  const handleStartTracking = async () => {
-    if (!route) {
-      Alert.alert("No Route", "Calculate a route first.");
+  const handleShareLiveSession = async () => {
+  if (!activeShare?.shareToken) {
+    Alert.alert(
+      "No Live Share",
+      "Start Walk Home first to create a live monitoring session."
+    );
+    return;
+  }
+
+  const message = `SafeWalk AI Live Location
+
+${activeShare.ownerName} is sharing their live Walk Home movement.
+
+Destination: ${activeShare.destinationName || "Not specified"}
+Risk Level: ${activeShare.routeRiskLevel.toUpperCase()}
+Share Token: ${activeShare.shareToken}
+
+Open SafeWalk AI and use this token to monitor:
+${activeShare.shareToken}`;
+
+  try {
+    await Share.share({
+      message,
+    });
+  } catch (error) {
+    Alert.alert("Share Failed", "Could not open the share menu.");
+  }
+};
+
+ const handleStartTracking = async () => {
+  if (!route) {
+    Alert.alert("No Route", "Calculate a route first.");
+    return;
+  }
+
+  if (!userLocation) {
+    Alert.alert(
+      "Missing Location",
+      "Tap the locate button first so SafeWalk AI can know where you are."
+    );
+    return;
+  }
+
+  try {
+    setCreatingShare(true);
+
+    const liveShare = await createLiveShareSessionApi({
+      ownerName: "SafeWalk User",
+      friendName,
+      friendPhone,
+      mode: "walk_home",
+      destinationName: destinationName || "Selected destination",
+      destinationLocation: destination
+        ? {
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+            timestamp: new Date().toISOString(),
+          }
+        : null,
+      currentLocation: {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        timestamp: new Date().toISOString(),
+      },
+      routeRiskLevel: route.riskLevel,
+      routeRiskScore: route.riskScore,
+      expectedArrivalAt: null,
+    });
+
+    setActiveShare(liveShare);
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (status !== "granted") {
+      Alert.alert(
+        "Location Permission Needed",
+        "SafeWalk AI needs location access to monitor your route."
+      );
       return;
     }
 
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-      if (status !== "granted") {
-        Alert.alert(
-          "Location Permission Needed",
-          "SafeWalk AI needs location access to monitor your route."
-        );
-        return;
-      }
-
-      if (locationSubscriptionRef.current) {
-        locationSubscriptionRef.current.remove();
-      }
-
-      setIsTracking(true);
-
-      const subscription = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          distanceInterval: 5,
-          timeInterval: 3000,
-        },
-        (position) => {
-          const coordinate = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-
-          setUserLocation(coordinate);
-          updatePassedAndRemainingRoute(coordinate);
-
-          mapRef.current?.animateCamera(
-            {
-              center: coordinate,
-              zoom: 17,
-            },
-            {
-              duration: 600,
-            }
-          );
-        }
-      );
-
-      locationSubscriptionRef.current = subscription;
-
-      bottomSheetRef.current?.snapToIndex(0);
-
-      Alert.alert(
-        "Walk Home Started",
-        "SafeWalk AI is now monitoring your movement on the recommended route."
-      );
-    } catch (error) {
-      Alert.alert("Tracking Error", "Could not start live route tracking.");
+    if (locationSubscriptionRef.current) {
+      locationSubscriptionRef.current.remove();
     }
-  };
 
-  const handleStopTracking = () => {
-    locationSubscriptionRef.current?.remove();
-    locationSubscriptionRef.current = null;
-    setIsTracking(false);
-  };
+    setIsTracking(true);
+
+    const subscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 5,
+        timeInterval: 3000,
+      },
+      (position) => {
+        const coordinate = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+
+        setUserLocation(coordinate);
+        updatePassedAndRemainingRoute(coordinate);
+
+        updateLiveShareLocationApi(liveShare.shareToken, {
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: new Date().toISOString(),
+        }).catch((error) => {
+          console.log("Live location update failed:", error);
+        });
+
+        mapRef.current?.animateCamera(
+          {
+            center: coordinate,
+            zoom: 17,
+          },
+          {
+            duration: 600,
+          }
+        );
+      }
+    );
+
+    locationSubscriptionRef.current = subscription;
+
+    bottomSheetRef.current?.snapToIndex(0);
+
+    Alert.alert(
+      "Walk Home Started",
+      `Live monitoring is active.\n\nShare Token:\n${liveShare.shareToken}`,
+      [
+        {
+          text: "Share Now",
+          onPress: handleShareLiveSession,
+        },
+        {
+          text: "OK",
+        },
+      ]
+    );
+  } catch (error) {
+    console.log("Live share start failed:", error);
+
+    Alert.alert(
+      "Live Share Failed",
+      "Could not create live sharing session. Check that your backend is running."
+    );
+  } finally {
+    setCreatingShare(false);
+  }
+};
+
+  const handleStopTracking = async () => {
+  locationSubscriptionRef.current?.remove();
+  locationSubscriptionRef.current = null;
+  setIsTracking(false);
+
+  if (activeShare?.shareToken) {
+    completeLiveShareSessionApi(activeShare.shareToken).catch((error) => {
+      console.log("Complete live share failed:", error);
+    });
+  }
+
+  clearActiveShare();
+};
 
   const handleClearDestination = () => {
     setDestination(null);
@@ -579,6 +708,27 @@ export default function NavigationScreen() {
             </View>
           </View>
 
+          <View style={styles.friendBox}>
+  <Text style={styles.friendLabel}>Share with friend</Text>
+
+  <TextInput
+    value={friendName}
+    onChangeText={setFriendName}
+    placeholder="Friend name, e.g. Ama"
+    placeholderTextColor={COLORS.softText}
+    style={styles.friendInput}
+  />
+
+  <TextInput
+    value={friendPhone}
+    onChangeText={setFriendPhone}
+    placeholder="Friend phone, optional"
+    placeholderTextColor={COLORS.softText}
+    keyboardType="phone-pad"
+    style={styles.friendInput}
+  />
+</View>
+
           {destinationName ? (
             <View style={styles.destinationBox}>
               <MapPin size={18} color={COLORS.primary} />
@@ -648,13 +798,36 @@ export default function NavigationScreen() {
             />
 
             {route ? (
-              <AppButton
-                title={isTracking ? "Tracking Active" : "Start Walk Home"}
-                onPress={handleStartTracking}
-                variant={isTracking ? "secondary" : "primary"}
-                disabled={isTracking}
-              />
-            ) : null}
+  <AppButton
+    title={
+      creatingShare
+        ? "Starting Live Share..."
+        : isTracking
+          ? "Tracking Active"
+          : "Start Walk Home"
+    }
+    onPress={handleStartTracking}
+    variant={isTracking ? "secondary" : "primary"}
+    disabled={isTracking || creatingShare}
+    loading={creatingShare}
+  />
+) : null}
+
+{isTracking ? (
+  <AppButton
+    title="I Am Safe"
+    onPress={handleSafeCheckIn}
+    variant="secondary"
+  />
+) : null}
+
+{activeShare?.shareToken ? (
+  <AppButton
+    title="Share Live Token"
+    onPress={handleShareLiveSession}
+    variant="secondary"
+  />
+) : null}
 
             {isTracking ? (
               <AppButton
@@ -960,4 +1133,30 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
     gap: SPACING.md,
   },
+  friendBox: {
+  backgroundColor: COLORS.surfaceMuted,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  marginBottom: SPACING.md,
+  gap: SPACING.sm,
+},
+
+friendLabel: {
+  fontSize: FONT_SIZE.xs,
+  fontWeight: "900",
+  color: COLORS.mutedText,
+  textTransform: "uppercase",
+},
+
+friendInput: {
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.md,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  paddingHorizontal: SPACING.md,
+  paddingVertical: SPACING.sm,
+  fontSize: FONT_SIZE.sm,
+  fontWeight: "700",
+  color: COLORS.text,
+},
 });

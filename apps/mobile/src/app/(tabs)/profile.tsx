@@ -7,6 +7,7 @@ import {
   UserRound,
   History,
   Settings,
+  Share2,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -54,6 +55,26 @@ export default function ProfileScreen() {
             style={styles.menuButton}
           />
         </View>
+
+        <View style={styles.menuCard}>
+  <View style={styles.menuIcon}>
+    <Share2 size={26} color={COLORS.primary} />
+  </View>
+
+  <View style={styles.menuContent}>
+    <Text style={styles.menuTitle}>Monitor Friend</Text>
+    <Text style={styles.menuText}>
+      Use a live share token to monitor a friend’s Walk Home movement.
+    </Text>
+  </View>
+
+  <AppButton
+    title="Open"
+    onPress={() => router.push("/live-share")}
+    variant="secondary"
+    style={styles.menuButton}
+  />
+</View>
 
        <View style={styles.menuCard}>
   <View style={styles.menuIcon}>

@@ -64,6 +64,7 @@ if (alert) {
       error instanceof Error
         ? error.message
         : "Unable to get your current location."
+        
     );
   }
 };

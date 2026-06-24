@@ -76,6 +76,7 @@ export default function ProfileScreen() {
   />
 </View>
 
+
        <View style={styles.menuCard}>
   <View style={styles.menuIcon}>
     <History size={26} color={COLORS.primary} />

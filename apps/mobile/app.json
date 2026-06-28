@@ -1,18 +1,22 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "SafeWalk AI",
+    "slug": "safewalk-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
       "package": "com.safewalkai.mobile",
+      "config": {
+        "googleMaps": {
+          "apiKey": "PASTE_YOUR_MOBILE_MAPS_KEY_HERE"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -29,9 +33,16 @@
     "plugins": [
       "expo-router",
       [
+        "expo-maps",
+        {
+          "requestLocationPermission": true,
+          "locationPermission": "Allow SafeWalk AI to use your location for safety navigation."
+        }
+      ],
+      [
         "react-native-maps",
         {
-          "andriodGoogleMapsApiKey": "AIzaSyA0g1r6k5J7n8l9m0oP1q2r3s4t5u6v7w8"
+          "androidGoogleMapsApiKey": "PASTE_YOUR_MOBILE_MAPS_KEY_HERE"
         }
       ],
       [

@@ -14,7 +14,7 @@
       "package": "com.safewalkai.mobile",
       "config": {
         "googleMaps": {
-          "apiKey": "PASTE_YOUR_MOBILE_MAPS_KEY_HERE"
+          "apiKey": "AIzaSyAxp2a0RPWjIpEOeKEswtoint-x9HQh8Gk"
         }
       },
       "adaptiveIcon": {
@@ -42,7 +42,7 @@
       [
         "react-native-maps",
         {
-          "androidGoogleMapsApiKey": "PASTE_YOUR_MOBILE_MAPS_KEY_HERE"
+          "androidGoogleMapsApiKey": "AIzaSyAxp2a0RPWjIpEOeKEswtoint-x9HQh8Gk"
         }
       ],
       [

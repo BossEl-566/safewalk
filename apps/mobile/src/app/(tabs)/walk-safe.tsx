@@ -248,10 +248,18 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
           subtitle="Enter your hostel, apartment, lecture hall, library, bus stop, or any destination."
         />
 
+        <AppButton
+  title="Test Expo Map"
+  onPress={() => router.push("/map-test")}
+  variant="secondary"
+/>
+
         <View style={styles.safeRouteCard}>
   <View style={styles.safeRouteIcon}>
     <Navigation size={26} color={COLORS.primary} />
   </View>
+
+  
 
   <View style={styles.safeRouteContent}>
     <Text style={styles.safeRouteTitle}>Live Safe Navigation</Text>
@@ -260,11 +268,7 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
     </Text>
   </View>
 
-  <AppButton
-  title="Test Expo Map"
-  onPress={() => router.push("/map-test")}
-  variant="secondary"
-/>
+  
 
   <AppButton
     title="Open"

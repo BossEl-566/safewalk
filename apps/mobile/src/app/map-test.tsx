@@ -1,130 +1,78 @@
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { AppleMaps, GoogleMaps } from "expo-maps";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft, Map } from "lucide-react-native";
 
-import { COLORS, FONT_SIZE, RADIUS, SPACING } from "../constants/theme";
+import { AppButton } from "../components/AppButton";
+import { Screen } from "../components/Screen";
+import {
+  COLORS,
+  FONT_SIZE,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from "../constants/theme";
 
-const KNUST_LOCATION = {
-  latitude: 6.6745,
-  longitude: -1.5716,
-};
-
-const AYEDUASE_LOCATION = {
-  latitude: 6.6891,
-  longitude: -1.5662,
-};
-
-export default function MapTestScreen() {
-  const cameraPosition = {
-    coordinates: KNUST_LOCATION,
-    zoom: 14,
-  };
-
-  const markers = [
-    {
-      id: "knust",
-      coordinates: KNUST_LOCATION,
-      title: "KNUST Area",
-      snippet: "SafeWalk AI map test",
-    },
-    {
-      id: "ayeduase",
-      coordinates: AYEDUASE_LOCATION,
-      title: "Ayeduase",
-      snippet: "Destination test marker",
-    },
-  ];
-
-  const polylines = [
-    {
-      id: "test-route",
-      coordinates: [KNUST_LOCATION, AYEDUASE_LOCATION],
-      color: "#059669",
-      width: 10,
-    },
-  ];
-
+export default function MapTestPlaceholderScreen() {
   return (
-    <View style={styles.container}>
-      {Platform.OS === "android" ? (
-        <GoogleMaps.View
-          style={StyleSheet.absoluteFill}
-          cameraPosition={cameraPosition}
-          markers={markers}
-          polylines={polylines}
-          properties={{
-            isMyLocationEnabled: true,
-            isTrafficEnabled: false,
-            isBuildingEnabled: true,
-            isIndoorEnabled: true,
-          }}
-          uiSettings={{
-            compassEnabled: true,
-            myLocationButtonEnabled: true,
-            zoomControlsEnabled: true,
-          }}
-          onMapLoaded={() => {
-            console.log("Expo Google Map loaded successfully");
-          }}
-        />
-      ) : (
-        <AppleMaps.View
-          style={StyleSheet.absoluteFill}
-          cameraPosition={cameraPosition}
-          markers={markers}
-          polylines={polylines}
-        />
-      )}
-
-      <View style={styles.topBar}>
+    <Screen scroll>
+      <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <ChevronLeft size={24} color={COLORS.text} />
         </Pressable>
 
-        <View style={styles.titleBox}>
-          <Text style={styles.title}>Expo Maps Test</Text>
-          <Text style={styles.subtitle}>KNUST → Ayeduase</Text>
+        <View>
+          <Text style={styles.title}>Expo Map Test</Text>
+          <Text style={styles.subtitle}>Development build required</Text>
         </View>
       </View>
-    </View>
+
+      <View style={styles.card}>
+        <View style={styles.iconBox}>
+          <Map size={42} color={COLORS.primary} />
+        </View>
+
+        <Text style={styles.cardTitle}>Expo Maps is not active yet</Text>
+
+        <Text style={styles.cardText}>
+          This screen is ready, but the real Expo Maps screen needs a development
+          build. Expo Go cannot load the native ExpoMaps module.
+        </Text>
+
+        <Text style={styles.command}>
+          eas build --profile development --platform android
+        </Text>
+
+        <AppButton
+          title="Go Back"
+          onPress={() => router.back()}
+          style={styles.button}
+        />
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-
-  topBar: {
-    position: "absolute",
-    top: 52,
-    left: SPACING.lg,
-    right: SPACING.lg,
+  header: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
+    marginBottom: SPACING.xl,
   },
 
   backButton: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  titleBox: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-
   title: {
-    fontSize: FONT_SIZE.md,
+    fontSize: FONT_SIZE.lg,
     fontWeight: "900",
     color: COLORS.text,
   },
@@ -134,5 +82,57 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     fontWeight: "700",
     color: COLORS.mutedText,
+  },
+
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  iconBox: {
+    width: 88,
+    height: 88,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.lg,
+  },
+
+  cardTitle: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: "900",
+    color: COLORS.text,
+    textAlign: "center",
+  },
+
+  cardText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.mutedText,
+    textAlign: "center",
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+
+  command: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.dark,
+    color: COLORS.white,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  button: {
+    marginTop: SPACING.xl,
+    width: "100%",
   },
 });

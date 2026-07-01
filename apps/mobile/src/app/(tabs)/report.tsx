@@ -263,6 +263,7 @@ export default function ReportScreen() {
         </View>
       </View>
 
+
       <View style={styles.section}>
         <SectionHeader
           title="Where did it happen?"

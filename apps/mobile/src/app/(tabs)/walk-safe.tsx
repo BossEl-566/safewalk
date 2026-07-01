@@ -250,7 +250,7 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
 
         <AppButton
   title="Test Expo Map"
-  onPress={() => router.push("/map-test")}
+  onPress={() => router.push("/test")}
   variant="secondary"
 />
 

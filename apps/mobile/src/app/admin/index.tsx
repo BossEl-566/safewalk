@@ -502,7 +502,7 @@ export default function AdminDashboardScreen() {
             <Text style={styles.emptyTitle}>No high-risk reports</Text>
             <Text style={styles.emptyText}>
               High-risk incident reports will appear here after students submit
-              them.
+              them with location permission.
             </Text>
           </View>
         )}

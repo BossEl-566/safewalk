@@ -49,7 +49,7 @@ export default function LiveShareTokenScreen() {
         <Text style={styles.heroTitle}>Live Safety Monitoring</Text>
         <Text style={styles.heroText}>
           Use the token shared by your friend to view their latest location,
-          route status, and safety check-ins.
+          route status, and safety check-ins in real-time.
         </Text>
       </View>
 

@@ -468,7 +468,7 @@ export default function AdminDashboardScreen() {
       <View style={styles.section}>
   <SectionHeader
     title="Active Walk Safe Sessions"
-    subtitle="Students currently using monitored walking mode."
+    subtitle="Students currently using monitored walking mode ."
   />
 
   {overview?.activeWalkSafeSessions.length ? (

@@ -84,7 +84,7 @@ export default function ProfileScreen() {
   <View style={styles.menuContent}>
     <Text style={styles.menuTitle}>Activity History</Text>
     <Text style={styles.menuText}>
-      View past SOS alerts, Walk Safe sessions, and incident reports.
+      View past SOS alerts, Walk Safe sessions, and incident reports history.
     </Text>
   </View>
 

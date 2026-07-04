@@ -11,12 +11,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import MapView, {
-  Marker,
-  Polyline,
-  PROVIDER_GOOGLE,
-  Region,
-} from "react-native-maps";
+import {
+  LeafletMapView,
+  LeafletMapViewRef,
+} from "../../components/LeafletMapView";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -61,6 +59,13 @@ const DEFAULT_REGION: Region = {
   longitude: -1.5716,
   latitudeDelta: 0.025,
   longitudeDelta: 0.025,
+};
+
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
 };
 
 function getRiskColor(score: number) {
@@ -148,7 +153,7 @@ export default function NavigationScreen() {
   const activeShare = useLiveShareStore((state) => state.activeShare);
 const setActiveShare = useLiveShareStore((state) => state.setActiveShare);
 const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<LeafletMapViewRef | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
   );
@@ -579,51 +584,17 @@ ${activeShare.shareToken}`;
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        initialRegion={DEFAULT_REGION}
-        showsUserLocation
-        showsMyLocationButton={false}
-        followsUserLocation={false}
-      >
-        {destination ? (
-          <Marker coordinate={destination}>
-            <View style={styles.destinationMarker}>
-              <MapPin size={23} color={COLORS.white} />
-            </View>
-          </Marker>
-        ) : null}
-
-        {userLocation ? (
-          <Marker coordinate={userLocation}>
-            <View style={styles.userMarkerOuter}>
-              <View style={styles.userMarkerInner} />
-            </View>
-          </Marker>
-        ) : null}
-
-        {passedRoute.length > 1 ? (
-          <Polyline
-            coordinates={passedRoute}
-            strokeWidth={7}
-            strokeColor="#94A3B8"
-            lineCap="round"
-            lineJoin="round"
-          />
-        ) : null}
-
-        {showRoute ? (
-          <Polyline
-            coordinates={remainingRoute}
-            strokeWidth={7}
-            strokeColor={routeRiskColor}
-            lineCap="round"
-            lineJoin="round"
-          />
-        ) : null}
-      </MapView>
+      <LeafletMapView
+  ref={mapRef}
+  style={styles.map}
+  center={userLocation ?? DEFAULT_REGION}
+  zoom={15}
+  userLocation={userLocation}
+  destination={destination}
+  passedRoute={passedRoute}
+  remainingRoute={remainingRoute}
+  riskColor={routeRiskColor}
+/>
 
       <View style={styles.topPanel}>
         <View style={styles.topRow}>

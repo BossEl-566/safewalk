@@ -246,6 +246,7 @@ export default function ReportScreen() {
                     selected && styles.selectedIcon,
                   ]}
                 >
+                  
                   {item.icon}
                 </View>
 

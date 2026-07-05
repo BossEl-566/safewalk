@@ -50,22 +50,21 @@ import {
   updateLiveShareLocationApi,
   checkInLiveShareSessionApi,
   completeLiveShareSessionApi,
-  cancelLiveShareSessionApi,
 } from "../../lib/liveShareApi";
 import { useLiveShareStore } from "../../store/liveShareStore";
-
-const DEFAULT_REGION: Region = {
-  latitude: 6.6745,
-  longitude: -1.5716,
-  latitudeDelta: 0.025,
-  longitudeDelta: 0.025,
-};
 
 type Region = {
   latitude: number;
   longitude: number;
   latitudeDelta: number;
   longitudeDelta: number;
+};
+
+const DEFAULT_REGION: Region = {
+  latitude: 6.6745,
+  longitude: -1.5716,
+  latitudeDelta: 0.025,
+  longitudeDelta: 0.025,
 };
 
 function getRiskColor(score: number) {
@@ -186,15 +185,7 @@ const [creatingShare, setCreatingShare] = useState(false);
     (points: MapCoordinate[]) => {
       if (!mapRef.current || points.length === 0) return;
 
-      mapRef.current.fitToCoordinates(points, {
-        edgePadding: {
-          top: 130,
-          right: 55,
-          bottom: 280,
-          left: 55,
-        },
-        animated: true,
-      });
+      mapRef.current.fitToCoordinates(points);
     },
     []
   );
@@ -238,14 +229,11 @@ const [creatingShare, setCreatingShare] = useState(false);
 
       setUserLocation(coordinate);
 
-      mapRef.current?.animateToRegion(
-        {
-          ...coordinate,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
-        },
-        600
-      );
+      mapRef.current?.animateToRegion({
+  ...coordinate,
+  latitudeDelta: 0.015,
+  longitudeDelta: 0.015,
+});
     } catch (error) {
       Alert.alert("Location Error", "Could not get your current location.");
     }
@@ -291,15 +279,12 @@ const [creatingShare, setCreatingShare] = useState(false);
 
       setDestination(details.location);
 
-      mapRef.current?.animateToRegion(
-        {
-          latitude: details.location.latitude,
-          longitude: details.location.longitude,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
-        },
-        600
-      );
+      mapRef.current?.animateToRegion({
+  latitude: details.location.latitude,
+  longitude: details.location.longitude,
+  latitudeDelta: 0.015,
+  longitudeDelta: 0.015,
+});
     } catch (error) {
       Alert.alert("Place Error", "Could not load selected place details.");
     } finally {
@@ -307,20 +292,52 @@ const [creatingShare, setCreatingShare] = useState(false);
     }
   };
 
-  const handleCalculateRoute = async () => {
-    if (!userLocation) {
-      await handleUseCurrentLocation();
-    }
+  const getFreshCurrentLocation = async (): Promise<MapCoordinate | null> => {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
 
-    const currentLocation = userLocation;
-
-    if (!currentLocation) {
+    if (status !== "granted") {
       Alert.alert(
-        "Missing Location",
-        "Tap the locate button first so SafeWalk AI can know where you are."
+        "Location Permission Needed",
+        "SafeWalk AI needs your current location to calculate a route."
       );
-      return;
+      return null;
     }
+
+    const position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+
+    const coordinate = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    };
+
+    setUserLocation(coordinate);
+
+    mapRef.current?.animateToRegion({
+      ...coordinate,
+      latitudeDelta: 0.015,
+      longitudeDelta: 0.015,
+    });
+
+    return coordinate;
+  } catch (error) {
+    Alert.alert("Location Error", "Could not get your current location.");
+    return null;
+  }
+};
+
+  const handleCalculateRoute = async () => {
+    const currentLocation = userLocation ?? (await getFreshCurrentLocation());
+
+if (!currentLocation) {
+  Alert.alert(
+    "Missing Location",
+    "SafeWalk AI could not get your current location."
+  );
+  return;
+}
 
     if (!destination) {
       Alert.alert("Missing Destination", "Please search and select a destination.");
@@ -579,8 +596,6 @@ ${activeShare.shareToken}`;
     setIsTracking(false);
     handleStopTracking();
   };
-
-  const showRoute = Boolean(route && remainingRoute.length > 0);
 
   return (
     <View style={styles.container}>

@@ -126,8 +126,10 @@ if (alert) {
             description="Report phone snatching, robbery, or suspicious activity."
             icon="⚠️"
             onPress={() => router.push("/(tabs)/report")}
+            
             style={styles.gridCard}
           />
+
 
           <SafetyCard
   title="Contacts"

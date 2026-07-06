@@ -248,11 +248,11 @@ const [duration, setDuration] = useState(defaultWalkDurationMinutes);
           subtitle="Enter your hostel, apartment, lecture hall, library, bus stop, or any destination."
         />
 
-        <AppButton
+        {/* <AppButton
   title="Test Expo Map"
   onPress={() => router.push("/test")}
   variant="secondary"
-/>
+/> */}
 
         <View style={styles.safeRouteCard}>
   <View style={styles.safeRouteIcon}>

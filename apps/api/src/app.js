@@ -12,6 +12,7 @@ const safeRouteRoutes = require("./routes/safeRouteRoutes");
 const navigationRoutes = require("./routes/navigationRoutes");
 const placesRoutes = require("./routes/placesRoutes");
 const liveShareRoutes = require("./routes/liveShareRoutes");
+const riskRoutes = require("./routes/riskRoutes");
 
 const app = express();
 
@@ -44,6 +45,8 @@ app.use("/api/safe-routes", safeRouteRoutes);
 app.use("/api/navigation", navigationRoutes);
 app.use("/api/places", placesRoutes);
 app.use("/api/live-share", liveShareRoutes);
+app.use("/api/risk", riskRoutes);
+
 
 app.use((req, res) => {
   res.status(404).json({

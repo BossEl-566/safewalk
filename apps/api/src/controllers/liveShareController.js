@@ -330,8 +330,42 @@ async function escalateLiveShareToSOS(req, res) {
   }
 }
 
+async function getLiveShareSessions(req, res) {
+  try {
+    const {
+      status = "",
+      limit = 50,
+    } = req.query;
+
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const sessions = await LiveShareSession.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit));
+
+    return res.json({
+      success: true,
+      count: sessions.length,
+      data: sessions,
+    });
+  } catch (error) {
+    console.error("Get live share sessions error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch live share sessions.",
+      error: error.message,
+    });
+  }
+}
+
 module.exports = {
   createLiveShareSession,
+  getLiveShareSessions,
   getLiveShareSession,
   updateLiveLocation,
   checkInLiveShareSession,

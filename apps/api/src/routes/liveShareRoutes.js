@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   createLiveShareSession,
+  getLiveShareSessions,
   getLiveShareSession,
   updateLiveLocation,
   checkInLiveShareSession,
@@ -13,6 +14,7 @@ const {
 const router = express.Router();
 
 router.post("/", createLiveShareSession);
+router.get("/", getLiveShareSessions);
 router.get("/:shareToken", getLiveShareSession);
 router.patch("/:shareToken/location", updateLiveLocation);
 router.patch("/:shareToken/check-in", checkInLiveShareSession);

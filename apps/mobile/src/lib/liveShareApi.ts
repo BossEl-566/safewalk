@@ -102,3 +102,15 @@ export async function escalateLiveShareToSOSApi(
 
   return response.data?.data;
 }
+
+export async function getLiveShareSessionsApi(status?: "active" | "completed" | "cancelled") {
+  const response = await api.get("/live-share", {
+    params: {
+      status,
+    },
+  });
+
+  const sessions = response.data?.data ?? [];
+
+  return sessions.map(normalizeLiveShareSession) as LiveShareSession[];
+}

@@ -148,12 +148,20 @@ function SOSAlertCard({
         </Text>
       </View>
 
+      
+
       <View style={styles.sosActions}>
         <AppButton
           title="Open Map"
           onPress={openMap}
           variant="secondary"
         />
+
+        <AppButton
+  title="Open Live Monitoring"
+  onPress={() => router.push("/admin/live-shares")}
+  variant="secondary"
+/>
 
         <AppButton
           title="Call Contact"

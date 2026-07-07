@@ -1,4 +1,5 @@
 const LiveShareSession = require("../models/LiveShareSession");
+const SOSAlert = require("../models/SOSAlert");
 
 function buildShareUrl(req, shareToken) {
   const baseUrl = process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get("host")}`;
@@ -262,6 +263,73 @@ async function cancelLiveShareSession(req, res) {
   }
 }
 
+async function escalateLiveShareToSOS(req, res) {
+  try {
+    const { shareToken } = req.params;
+    const { reason = "Missed safety check-in during live monitoring." } =
+      req.body;
+
+    const session = await LiveShareSession.findOne({ shareToken });
+
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: "Live share session not found.",
+      });
+    }
+
+    if (session.status !== "active") {
+      return res.status(400).json({
+        success: false,
+        message: "Live share session is not active.",
+      });
+    }
+
+    if (!session.currentLocation?.latitude || !session.currentLocation?.longitude) {
+      return res.status(400).json({
+        success: false,
+        message: "No current location available for SOS escalation.",
+      });
+    }
+
+    session.lastCheckInStatus = "missed";
+    await session.save();
+
+    const sosAlert = await SOSAlert.create({
+      userName: session.ownerName || "SafeWalk User",
+      status: "active",
+      location: {
+        latitude: session.currentLocation.latitude,
+        longitude: session.currentLocation.longitude,
+        accuracy: session.currentLocation.accuracy ?? null,
+      },
+      message: `${reason} Destination: ${
+        session.destinationName || "Not specified"
+      }. Risk: ${session.routeRiskLevel} (${session.routeRiskScore}/100).`,
+      trustedContactName: session.friendName || "",
+      trustedContactPhone: session.friendPhone || "",
+      source: "walk_safe",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "SOS escalation created successfully.",
+      data: {
+        liveShareSession: session,
+        sosAlert,
+      },
+    });
+  } catch (error) {
+    console.error("Escalate live share to SOS error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to escalate live share to SOS.",
+      error: error.message,
+    });
+  }
+}
+
 module.exports = {
   createLiveShareSession,
   getLiveShareSession,
@@ -269,4 +337,5 @@ module.exports = {
   checkInLiveShareSession,
   completeLiveShareSession,
   cancelLiveShareSession,
+  escalateLiveShareToSOS,
 };

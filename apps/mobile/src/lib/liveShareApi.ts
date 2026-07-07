@@ -91,3 +91,14 @@ export async function cancelLiveShareSessionApi(shareToken: string) {
   const response = await api.patch(`/live-share/${shareToken}/cancel`);
   return normalizeLiveShareSession(response.data?.data);
 }
+
+export async function escalateLiveShareToSOSApi(
+  shareToken: string,
+  reason: string
+) {
+  const response = await api.patch(`/live-share/${shareToken}/escalate-sos`, {
+    reason,
+  });
+
+  return response.data?.data;
+}

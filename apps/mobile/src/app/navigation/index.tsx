@@ -50,6 +50,7 @@ import {
   updateLiveShareLocationApi,
   checkInLiveShareSessionApi,
   completeLiveShareSessionApi,
+  escalateLiveShareToSOSApi,
 } from "../../lib/liveShareApi";
 import { useLiveShareStore } from "../../store/liveShareStore";
 import { checkLocationRiskApi } from "../../lib/riskApi";
@@ -154,6 +155,9 @@ export default function NavigationScreen() {
   const activeShare = useLiveShareStore((state) => state.activeShare);
 const setActiveShare = useLiveShareStore((state) => state.setActiveShare);
 const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
+const sosEscalationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+  null
+);
   const mapRef = useRef<LeafletMapViewRef | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
@@ -171,6 +175,8 @@ const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [loadingRoute, setLoadingRoute] = useState(false);
+
+  const [escalatingSOS, setEscalatingSOS] = useState(false);
 
   const [route, setRoute] = useState<SafeNavigationRoute | null>(null);
   const [passedRoute, setPassedRoute] = useState<MapCoordinate[]>([]);
@@ -456,6 +462,86 @@ ${activeShare.shareToken}`;
   }
 };
 
+const handleEscalateToSOS = async (reason: string) => {
+  if (!activeShare?.shareToken) {
+    Alert.alert(
+      "No Active Live Share",
+      "Start Walk Home first before escalating to SOS."
+    );
+    return;
+  }
+
+  try {
+    setEscalatingSOS(true);
+
+    await escalateLiveShareToSOSApi(activeShare.shareToken, reason);
+
+    Alert.alert(
+      "SOS Escalated",
+      "SafeWalk AI has created an SOS alert from your live monitoring session."
+    );
+  } catch (error) {
+    console.log("SOS escalation failed:", error);
+
+    Alert.alert(
+      "SOS Escalation Failed",
+      "Could not create SOS alert. Check that your backend is running."
+    );
+  } finally {
+    setEscalatingSOS(false);
+  }
+};
+
+const startSafetyCheckCountdown = (riskMessage: string) => {
+  if (!activeShare?.shareToken) return;
+
+  if (sosEscalationTimerRef.current) {
+    return;
+  }
+
+  Alert.alert(
+    "Safety Check Required",
+    `${riskMessage}\n\nPlease confirm that you are safe.`,
+    [
+      {
+        text: "I Am Safe",
+        onPress: async () => {
+          if (sosEscalationTimerRef.current) {
+            clearTimeout(sosEscalationTimerRef.current);
+            sosEscalationTimerRef.current = null;
+          }
+
+          await handleSafeCheckIn();
+        },
+      },
+      {
+        text: "Send SOS",
+        style: "destructive",
+        onPress: () => {
+          if (sosEscalationTimerRef.current) {
+            clearTimeout(sosEscalationTimerRef.current);
+            sosEscalationTimerRef.current = null;
+          }
+
+          handleEscalateToSOS("User manually escalated SOS from danger area.");
+        },
+      },
+      {
+        text: "Remind Me",
+        style: "cancel",
+      },
+    ]
+  );
+
+  sosEscalationTimerRef.current = setTimeout(() => {
+    sosEscalationTimerRef.current = null;
+
+    handleEscalateToSOS(
+      "User missed safety check-in after entering a high-risk area."
+    );
+  }, 60000);
+};
+
 const checkCurrentAreaRisk = useCallback(
   async (coordinate: MapCoordinate) => {
     const now = Date.now();
@@ -482,12 +568,15 @@ const checkCurrentAreaRisk = useCallback(
       ) {
         setDangerAreaWarningShown(true);
 
-        Alert.alert(
-          "Danger Area Warning",
-          `${
-            risk.warnings[0] || "A risky area was detected nearby."
-          }\n\nSafeWalk AI recommends staying on the safer route and avoiding isolated shortcuts.`
-        );
+        const warningMessage =
+  risk.warnings[0] || "A risky area was detected nearby.";
+
+Alert.alert(
+  "Danger Area Warning",
+  `${warningMessage}\n\nSafeWalk AI recommends staying on the safer route and avoiding isolated shortcuts.`
+);
+
+startSafetyCheckCountdown(warningMessage);
       }
 
       if (risk.riskLevel === "low") {
@@ -626,6 +715,10 @@ const checkCurrentAreaRisk = useCallback(
 };
 
   const handleStopTracking = async () => {
+    if (sosEscalationTimerRef.current) {
+  clearTimeout(sosEscalationTimerRef.current);
+  sosEscalationTimerRef.current = null;
+}
   locationSubscriptionRef.current?.remove();
   locationSubscriptionRef.current = null;
   setIsTracking(false);
@@ -906,6 +999,18 @@ const checkCurrentAreaRisk = useCallback(
     title="I Am Safe"
     onPress={handleSafeCheckIn}
     variant="secondary"
+  />
+) : null}
+
+{isTracking ? (
+  <AppButton
+    title={escalatingSOS ? "Escalating SOS..." : "Escalate to SOS"}
+    onPress={() =>
+      handleEscalateToSOS("User manually escalated SOS from Walk Home.")
+    }
+    variant="secondary"
+    loading={escalatingSOS}
+    disabled={escalatingSOS}
   />
 ) : null}
 

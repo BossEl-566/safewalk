@@ -52,6 +52,8 @@ import {
   completeLiveShareSessionApi,
 } from "../../lib/liveShareApi";
 import { useLiveShareStore } from "../../store/liveShareStore";
+import { checkLocationRiskApi } from "../../lib/riskApi";
+import { LocationRiskResult } from "../../types/risk";
 
 type Region = {
   latitude: number;
@@ -156,6 +158,7 @@ const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
   );
+  const lastRiskCheckRef = useRef(0);
 
   const bottomSheetRef = useRef<BottomSheet | null>(null);
   const snapPoints = useMemo(() => ["22%", "48%", "78%"], []);
@@ -174,6 +177,10 @@ const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
   const [remainingRoute, setRemainingRoute] = useState<MapCoordinate[]>([]);
   const [isTracking, setIsTracking] = useState(false);
   const [offRouteWarningShown, setOffRouteWarningShown] = useState(false);
+  const [currentAreaRisk, setCurrentAreaRisk] =
+  useState<LocationRiskResult | null>(null);
+
+const [dangerAreaWarningShown, setDangerAreaWarningShown] = useState(false);
 
   const [friendName, setFriendName] = useState("");
 const [friendPhone, setFriendPhone] = useState("");
@@ -365,6 +372,7 @@ if (!currentLocation) {
       setPassedRoute([]);
       setRemainingRoute(recommended.coordinates);
       setOffRouteWarningShown(false);
+      checkCurrentAreaRisk(currentLocation);
 
       focusMapOnPoints([
         currentLocation,
@@ -448,6 +456,50 @@ ${activeShare.shareToken}`;
   }
 };
 
+const checkCurrentAreaRisk = useCallback(
+  async (coordinate: MapCoordinate) => {
+    const now = Date.now();
+
+    // Avoid calling backend every second.
+    if (now - lastRiskCheckRef.current < 12000) {
+      return;
+    }
+
+    lastRiskCheckRef.current = now;
+
+    try {
+      const risk = await checkLocationRiskApi({
+        location: coordinate,
+        radiusMeters: 220,
+        selectedHour: new Date().getHours(),
+      });
+
+      setCurrentAreaRisk(risk);
+
+      if (
+        (risk.riskLevel === "high" || risk.riskLevel === "critical") &&
+        !dangerAreaWarningShown
+      ) {
+        setDangerAreaWarningShown(true);
+
+        Alert.alert(
+          "Danger Area Warning",
+          `${
+            risk.warnings[0] || "A risky area was detected nearby."
+          }\n\nSafeWalk AI recommends staying on the safer route and avoiding isolated shortcuts.`
+        );
+      }
+
+      if (risk.riskLevel === "low") {
+        setDangerAreaWarningShown(false);
+      }
+    } catch (error) {
+      console.log("Location risk check failed:", error);
+    }
+  },
+  [dangerAreaWarningShown]
+);
+
  const handleStartTracking = async () => {
   if (!route) {
     Alert.alert("No Route", "Calculate a route first.");
@@ -520,6 +572,8 @@ ${activeShare.shareToken}`;
 
         setUserLocation(coordinate);
         updatePassedAndRemainingRoute(coordinate);
+
+        checkCurrentAreaRisk(coordinate);
 
         updateLiveShareLocationApi(liveShare.shareToken, {
           latitude: coordinate.latitude,
@@ -609,6 +663,18 @@ ${activeShare.shareToken}`;
   passedRoute={passedRoute}
   remainingRoute={remainingRoute}
   riskColor={routeRiskColor}
+  dangerMarkers={
+    currentAreaRisk?.nearbyIncidents
+      .filter((incident) => incident.location)
+      .map((incident) => ({
+        id: incident.id,
+        title: incident.title || "Reported incident",
+        description: `${incident.category} • ${incident.distanceMeters}m away`,
+        latitude: incident.location!.latitude,
+        longitude: incident.location!.longitude,
+        riskLevel: currentAreaRisk.riskLevel,
+      })) ?? []
+  }
 />
 
       <View style={styles.topPanel}>
@@ -764,6 +830,42 @@ ${activeShare.shareToken}`;
                     {route.riskLevel.toUpperCase()} RISK ROUTE
                   </Text>
                 </View>
+
+                {currentAreaRisk ? (
+  <View style={styles.currentRiskBox}>
+    <View style={styles.riskHeader}>
+      <ShieldAlert
+        size={19}
+        color={getRiskColor(currentAreaRisk.riskScore)}
+      />
+
+      <Text
+        style={[
+          styles.riskTitle,
+          { color: getRiskColor(currentAreaRisk.riskScore) },
+        ]}
+      >
+        CURRENT AREA: {currentAreaRisk.riskLevel.toUpperCase()} RISK
+      </Text>
+    </View>
+
+    <Text style={styles.currentRiskScore}>
+      Score: {currentAreaRisk.riskScore}/100 • Nearby reports:{" "}
+      {currentAreaRisk.nearbyIncidentCount}
+    </Text>
+
+    {currentAreaRisk.warnings.slice(0, 2).map((warning, index) => (
+      <View key={index} style={styles.reasonRow}>
+        <AlertTriangle
+          size={14}
+          color={getRiskColor(currentAreaRisk.riskScore)}
+        />
+
+        <Text style={styles.reasonText}>{warning}</Text>
+      </View>
+    ))}
+  </View>
+) : null}
 
                 {route.reasons.slice(0, 3).map((reason, index) => (
                   <View key={index} style={styles.reasonRow}>
@@ -1144,5 +1246,20 @@ friendInput: {
   fontSize: FONT_SIZE.sm,
   fontWeight: "700",
   color: COLORS.text,
+},
+currentRiskBox: {
+  marginTop: SPACING.md,
+  backgroundColor: COLORS.surfaceMuted,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+},
+
+currentRiskScore: {
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "800",
+  marginBottom: SPACING.xs,
 },
 });

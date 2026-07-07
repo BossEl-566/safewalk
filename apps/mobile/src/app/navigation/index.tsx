@@ -1,4 +1,5 @@
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import {
@@ -152,6 +153,7 @@ function findNearestRouteIndex(
 }
 
 export default function NavigationScreen() {
+  const insets = useSafeAreaInsets();
   const activeShare = useLiveShareStore((state) => state.activeShare);
 const setActiveShare = useLiveShareStore((state) => state.setActiveShare);
 const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
@@ -165,7 +167,10 @@ const sosEscalationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
   const lastRiskCheckRef = useRef(0);
 
   const bottomSheetRef = useRef<BottomSheet | null>(null);
-  const snapPoints = useMemo(() => ["22%", "48%", "78%"], []);
+  const snapPoints = useMemo(() => ["28%", "64%", "92%"], []);
+
+  const [rerouting, setRerouting] = useState(false);
+const [rerouteCount, setRerouteCount] = useState(0);
 
   const [userLocation, setUserLocation] = useState<MapCoordinate | null>(null);
   const [destination, setDestination] = useState<MapCoordinate | null>(null);
@@ -258,6 +263,7 @@ const [creatingShare, setCreatingShare] = useState(false);
     setRoute(null);
     setPassedRoute([]);
     setRemainingRoute([]);
+    setRerouteCount(0);
 
     if (value.trim().length < 2) {
       setSuggestions([]);
@@ -398,6 +404,62 @@ if (!currentLocation) {
     }
   };
 
+  const handleRerouteFromCurrentLocation = async (
+  currentLocation: MapCoordinate,
+  reason = "You moved away from the recommended route."
+) => {
+  if (!destination) {
+    Alert.alert("Missing Destination", "No destination found for rerouting.");
+    return;
+  }
+
+  try {
+    setRerouting(true);
+
+    const result = await calculateSafeNavigationRouteApi({
+      origin: currentLocation,
+      destination,
+      travelMode: "WALK",
+      selectedHour: new Date().getHours(),
+    });
+
+    if (!result.recommendedRoute) {
+      Alert.alert("Reroute Failed", "SafeWalk AI could not find a new route.");
+      return;
+    }
+
+    const newRoute = result.recommendedRoute;
+
+    setRoute(newRoute);
+    setPassedRoute([]);
+    setRemainingRoute(newRoute.coordinates);
+    setOffRouteWarningShown(false);
+    setRerouteCount((count) => count + 1);
+
+    focusMapOnPoints([
+      currentLocation,
+      destination,
+      ...newRoute.coordinates,
+    ]);
+
+    checkCurrentAreaRisk(currentLocation);
+
+    Alert.alert(
+      "Route Updated",
+      `${reason}\n\nSafeWalk AI has calculated a new safer route from your current location.`
+    );
+  } catch (error) {
+    console.log("Reroute failed:", error);
+
+    Alert.alert(
+      "Reroute Failed",
+      "Could not calculate a new route. Check your backend and route service."
+    );
+  } finally {
+    setRerouting(false);
+  }
+};
+
   const updatePassedAndRemainingRoute = useCallback(
     (location: MapCoordinate) => {
       if (!route?.coordinates.length) return;
@@ -413,13 +475,27 @@ if (!currentLocation) {
       setRemainingRoute(remaining);
 
       if (nearest.nearestDistance > 80 && !offRouteWarningShown) {
-        setOffRouteWarningShown(true);
+  setOffRouteWarningShown(true);
 
-        Alert.alert(
-          "Route Warning",
-          "You appear to be moving away from the recommended route. SafeWalk AI suggests returning to the safer route."
-        );
-      }
+  Alert.alert(
+    "Route Warning",
+    "You appear to be moving away from the recommended route. SafeWalk AI suggests returning to the safer route or recalculating from your current location.",
+    [
+      {
+        text: "Return to Route",
+        style: "cancel",
+      },
+      {
+        text: "Reroute",
+        onPress: () =>
+          handleRerouteFromCurrentLocation(
+            location,
+            "You moved away from the recommended route."
+          ),
+      },
+    ]
+  );
+}
 
       const nearbyHighRisk = route.nearbyReports.find(
         (report) => report.aiRiskScore >= 70
@@ -430,7 +506,7 @@ if (!currentLocation) {
         console.log("High-risk report near route:", nearbyHighRisk);
       }
     },
-    [route, offRouteWarningShown]
+    [route, offRouteWarningShown, handleRerouteFromCurrentLocation]
   );
 
   const handleShareLiveSession = async () => {
@@ -741,6 +817,7 @@ startSafetyCheckCountdown(warningMessage);
     setPassedRoute([]);
     setRemainingRoute([]);
     setIsTracking(false);
+    setRerouteCount(0);
     handleStopTracking();
   };
 
@@ -833,13 +910,22 @@ startSafetyCheckCountdown(warningMessage);
       </Pressable>
 
       <BottomSheet
-        ref={bottomSheetRef}
-        index={0}
-        snapPoints={snapPoints}
-        backgroundStyle={styles.bottomSheetBackground}
-        handleIndicatorStyle={styles.bottomSheetHandle}
-      >
-        <BottomSheetView style={styles.sheetContent}>
+  ref={bottomSheetRef}
+  index={0}
+  snapPoints={snapPoints}
+  bottomInset={insets.bottom}
+  backgroundStyle={styles.bottomSheetBackground}
+  handleIndicatorStyle={styles.bottomSheetHandle}
+>
+        <BottomSheetScrollView
+  showsVerticalScrollIndicator={false}
+  contentContainerStyle={[
+    styles.sheetContent,
+    {
+      paddingBottom: insets.bottom + SPACING.xxxl,
+    },
+  ]}
+>
           <View style={styles.sheetHeader}>
             <View style={styles.sheetIcon}>
               <Navigation size={25} color={COLORS.primary} />
@@ -915,6 +1001,12 @@ startSafetyCheckCountdown(warningMessage);
                   <Text style={styles.routeStatLabel}>Risk</Text>
                 </View>
               </View>
+
+              <View style={styles.routeStat}>
+  <Navigation size={18} color={COLORS.primary} />
+  <Text style={styles.routeStatValue}>{rerouteCount}</Text>
+  <Text style={styles.routeStatLabel}>Reroutes</Text>
+</View>
 
               <View style={styles.riskBox}>
                 <View style={styles.riskHeader}>
@@ -994,6 +1086,21 @@ startSafetyCheckCountdown(warningMessage);
   />
 ) : null}
 
+{route && userLocation ? (
+  <AppButton
+    title={rerouting ? "Rerouting..." : "Reroute From Here"}
+    onPress={() =>
+      handleRerouteFromCurrentLocation(
+        userLocation,
+        "Manual reroute requested."
+      )
+    }
+    variant="secondary"
+    loading={rerouting}
+    disabled={rerouting}
+  />
+) : null}
+
 {isTracking ? (
   <AppButton
     title="I Am Safe"
@@ -1030,7 +1137,7 @@ startSafetyCheckCountdown(warningMessage);
               />
             ) : null}
           </View>
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheet>
     </View>
   );

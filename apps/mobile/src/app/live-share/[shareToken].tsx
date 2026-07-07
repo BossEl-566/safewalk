@@ -8,7 +8,6 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import {
   ChevronLeft,
   Clock,
@@ -21,6 +20,7 @@ import {
 
 import { Screen } from "../../components/Screen";
 import { AppButton } from "../../components/AppButton";
+import { LeafletMapView } from "../../components/LeafletMapView";
 import {
   COLORS,
   FONT_SIZE,
@@ -31,11 +31,9 @@ import {
 import { getLiveShareSessionApi } from "../../lib/liveShareApi";
 import { LiveShareSession } from "../../types/liveShare";
 
-const DEFAULT_REGION: Region = {
+const DEFAULT_LOCATION = {
   latitude: 6.6745,
   longitude: -1.5716,
-  latitudeDelta: 0.025,
-  longitudeDelta: 0.025,
 };
 
 function formatDateTime(value?: string | null) {
@@ -94,20 +92,25 @@ export default function LiveShareMonitorScreen() {
   const currentLocation = session?.currentLocation;
   const destinationLocation = session?.destinationLocation;
 
-  const mapRegion: Region = currentLocation
-    ? {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.018,
-        longitudeDelta: 0.018,
-      }
-    : DEFAULT_REGION;
-
   const pathCoordinates =
     session?.locationUpdates.map((item) => ({
       latitude: item.latitude,
       longitude: item.longitude,
     })) ?? [];
+
+  const mapCenter = currentLocation
+    ? {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+      }
+    : DEFAULT_LOCATION;
+
+  const destination = destinationLocation
+    ? {
+        latitude: destinationLocation.latitude,
+        longitude: destinationLocation.longitude,
+      }
+    : null;
 
   return (
     <Screen scroll>
@@ -119,7 +122,7 @@ export default function LiveShareMonitorScreen() {
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Live Monitor</Text>
           <Text style={styles.headerSubtitle}>
-            Tracking token: {shareToken.slice(0, 8)}...
+            Tracking token: {shareToken ? `${shareToken.slice(0, 8)}...` : "None"}
           </Text>
         </View>
 
@@ -133,38 +136,15 @@ export default function LiveShareMonitorScreen() {
       </View>
 
       <View style={styles.mapCard}>
-        <MapView
-          provider={PROVIDER_GOOGLE}
+        <LeafletMapView
           style={styles.map}
-          initialRegion={mapRegion}
-          region={mapRegion}
-        >
-          {pathCoordinates.length > 1 ? (
-            <Polyline
-              coordinates={pathCoordinates}
-              strokeWidth={6}
-              strokeColor={COLORS.primary}
-              lineCap="round"
-              lineJoin="round"
-            />
-          ) : null}
-
-          {currentLocation ? (
-            <Marker coordinate={currentLocation}>
-              <View style={styles.userMarkerOuter}>
-                <View style={styles.userMarkerInner} />
-              </View>
-            </Marker>
-          ) : null}
-
-          {destinationLocation ? (
-            <Marker coordinate={destinationLocation}>
-              <View style={styles.destinationMarker}>
-                <MapPin size={22} color={COLORS.white} />
-              </View>
-            </Marker>
-          ) : null}
-        </MapView>
+          center={mapCenter}
+          zoom={15}
+          userLocation={currentLocation}
+          destination={destination}
+          remainingRoute={pathCoordinates}
+          riskColor={COLORS.primary}
+        />
       </View>
 
       {session ? (
@@ -195,6 +175,13 @@ export default function LiveShareMonitorScreen() {
             <Clock size={17} color={COLORS.mutedText} />
             <Text style={styles.infoText}>
               Last check-in: {formatDateTime(session.lastCheckInAt)}
+            </Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Clock size={17} color={COLORS.mutedText} />
+            <Text style={styles.infoText}>
+              Last updated: {formatDateTime(session.updatedAt)}
             </Text>
           </View>
 
@@ -296,35 +283,6 @@ const styles = StyleSheet.create({
 
   map: {
     flex: 1,
-  },
-
-  userMarkerOuter: {
-    width: 30,
-    height: 30,
-    borderRadius: RADIUS.full,
-    backgroundColor: "rgba(37, 99, 235, 0.20)",
-    borderWidth: 2,
-    borderColor: COLORS.white,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  userMarkerInner: {
-    width: 14,
-    height: 14,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.info,
-  },
-
-  destinationMarker: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: COLORS.white,
   },
 
   statusCard: {

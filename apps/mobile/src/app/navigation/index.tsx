@@ -44,7 +44,11 @@ import {
   autocompletePlacesApi,
   getPlaceDetailsApi,
 } from "../../lib/placeApi";
-import { MapCoordinate, SafeNavigationRoute } from "../../types/navigation";
+import {
+  MapCoordinate,
+  RouteDecisionExplanation,
+  SafeNavigationRoute,
+} from "../../types/navigation";
 import { PlaceSuggestion } from "../../types/place";
 import {
   createLiveShareSessionApi,
@@ -176,6 +180,8 @@ const [rerouteCount, setRerouteCount] = useState(0);
   const [destination, setDestination] = useState<MapCoordinate | null>(null);
   const [destinationName, setDestinationName] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [routeDecision, setRouteDecision] =
+  useState<RouteDecisionExplanation | null>(null);
 
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
@@ -264,6 +270,7 @@ const [creatingShare, setCreatingShare] = useState(false);
     setPassedRoute([]);
     setRemainingRoute([]);
     setRerouteCount(0);
+    setRouteDecision(null);
 
     if (value.trim().length < 2) {
       setSuggestions([]);
@@ -384,6 +391,7 @@ if (!currentLocation) {
       setPassedRoute([]);
       setRemainingRoute(recommended.coordinates);
       setOffRouteWarningShown(false);
+      setRouteDecision(result.decisionExplanation ?? null);
       checkCurrentAreaRisk(currentLocation);
 
       focusMapOnPoints([
@@ -434,6 +442,7 @@ if (!currentLocation) {
     setPassedRoute([]);
     setRemainingRoute(newRoute.coordinates);
     setOffRouteWarningShown(false);
+    setRouteDecision(result.decisionExplanation ?? null);
     setRerouteCount((count) => count + 1);
 
     focusMapOnPoints([
@@ -1050,6 +1059,75 @@ startSafetyCheckCountdown(warningMessage);
       </View>
     ))}
   </View>
+
+  
+) : null}
+
+{routeDecision ? (
+  <View style={styles.decisionBox}>
+    <Text style={styles.decisionTitle}>Why this route?</Text>
+
+    <Text style={styles.decisionSummary}>
+      {routeDecision.summary}
+    </Text>
+
+    {routeDecision.selectedReasons.slice(0, 4).map((reason, index) => (
+      <View key={`reason-${index}`} style={styles.decisionRow}>
+        <ShieldCheck size={14} color={COLORS.primary} />
+        <Text style={styles.decisionText}>{reason}</Text>
+      </View>
+    ))}
+
+    <Text style={styles.decisionSubTitle}>Route comparison</Text>
+
+    {routeDecision.alternatives.slice(0, 3).map((item) => (
+      <View
+        key={`alternative-${item.routeIndex}`}
+        style={[
+          styles.alternativeCard,
+          item.selected && styles.alternativeCardSelected,
+        ]}
+      >
+        <View style={styles.alternativeHeader}>
+          <Text
+            style={[
+              styles.alternativeTitle,
+              item.selected && styles.alternativeTitleSelected,
+            ]}
+          >
+            {item.label}
+          </Text>
+
+          <Text
+            style={[
+              styles.alternativeRisk,
+              item.selected && styles.alternativeTitleSelected,
+            ]}
+          >
+            {item.riskScore}/100
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.alternativeMeta,
+            item.selected && styles.alternativeMetaSelected,
+          ]}
+        >
+          {item.distance} • {item.duration} • {item.nearbyIncidentCount} nearby report(s)
+        </Text>
+
+        <Text
+          style={[
+            styles.alternativeText,
+            item.selected && styles.alternativeMetaSelected,
+          ]}
+        >
+          {item.explanation}
+        </Text>
+      </View>
+    ))}
+  </View>
 ) : null}
 
                 {route.reasons.slice(0, 3).map((reason, index) => (
@@ -1473,5 +1551,108 @@ currentRiskScore: {
   color: COLORS.mutedText,
   fontWeight: "800",
   marginBottom: SPACING.xs,
+},
+decisionBox: {
+  marginTop: SPACING.md,
+  backgroundColor: COLORS.surfaceMuted,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+},
+
+decisionTitle: {
+  fontSize: FONT_SIZE.md,
+  fontWeight: "900",
+  color: COLORS.text,
+},
+
+decisionSummary: {
+  marginTop: SPACING.xs,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "800",
+  lineHeight: 18,
+},
+
+decisionRow: {
+  marginTop: SPACING.sm,
+  flexDirection: "row",
+  alignItems: "flex-start",
+  gap: SPACING.sm,
+},
+
+decisionText: {
+  flex: 1,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.text,
+  fontWeight: "700",
+  lineHeight: 18,
+},
+
+decisionSubTitle: {
+  marginTop: SPACING.md,
+  marginBottom: SPACING.sm,
+  fontSize: FONT_SIZE.xs,
+  fontWeight: "900",
+  color: COLORS.mutedText,
+  textTransform: "uppercase",
+},
+
+alternativeCard: {
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.md,
+  padding: SPACING.md,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  marginBottom: SPACING.sm,
+},
+
+alternativeCardSelected: {
+  backgroundColor: COLORS.primary,
+  borderColor: COLORS.primary,
+},
+
+alternativeHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: SPACING.sm,
+},
+
+alternativeTitle: {
+  flex: 1,
+  fontSize: FONT_SIZE.sm,
+  fontWeight: "900",
+  color: COLORS.text,
+},
+
+alternativeTitleSelected: {
+  color: COLORS.white,
+},
+
+alternativeRisk: {
+  fontSize: FONT_SIZE.sm,
+  fontWeight: "900",
+  color: COLORS.primary,
+},
+
+alternativeMeta: {
+  marginTop: 3,
+  fontSize: FONT_SIZE.xs,
+  fontWeight: "800",
+  color: COLORS.mutedText,
+},
+
+alternativeMetaSelected: {
+  color: COLORS.white,
+},
+
+alternativeText: {
+  marginTop: SPACING.xs,
+  fontSize: FONT_SIZE.xs,
+  fontWeight: "700",
+  color: COLORS.text,
+  lineHeight: 18,
 },
 });

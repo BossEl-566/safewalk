@@ -31,4 +31,24 @@ export type SafeNavigationRoute = {
 export type SafeNavigationResponse = {
   recommendedRoute: SafeNavigationRoute | null;
   routes: SafeNavigationRoute[];
+  decisionExplanation?: RouteDecisionExplanation;
+};
+
+export type RouteDecisionAlternative = {
+  routeIndex: number;
+  label: string;
+  riskScore: number;
+  riskLevel: RouteRiskLevel;
+  distance: string;
+  duration: string;
+  nearbyIncidentCount: number;
+  selected: boolean;
+  explanation: string;
+};
+
+export type RouteDecisionExplanation = {
+  summary: string;
+  selectedReasons: string[];
+  comparisonPoints: string[];
+  alternatives: RouteDecisionAlternative[];
 };

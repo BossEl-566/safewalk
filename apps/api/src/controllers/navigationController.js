@@ -1,6 +1,9 @@
 const IncidentReport = require("../models/IncidentReport");
 const { getRouteFromGoogle } = require("../services/googleMapsService");
 const { scoreRouteRisk } = require("../services/routeRiskService");
+const {
+  buildRouteDecisionExplanation,
+} = require("../services/routeDecisionService");
 
 async function calculateSafeNavigationRoute(req, res) {
   try {
@@ -52,15 +55,21 @@ async function calculateSafeNavigationRoute(req, res) {
       return a.distanceMeters - b.distanceMeters;
     });
 
-    const recommendedRoute = scoredRoutes[0] || null;
+   const recommendedRoute = scoredRoutes[0] || null;
 
-    return res.json({
-      success: true,
-      data: {
-        recommendedRoute,
-        routes: scoredRoutes,
-      },
-    });
+const decisionExplanation = buildRouteDecisionExplanation({
+  recommendedRoute,
+  routes: scoredRoutes,
+});
+
+return res.json({
+  success: true,
+  data: {
+    recommendedRoute,
+    routes: scoredRoutes,
+    decisionExplanation,
+  },
+});
   } catch (error) {
     console.error("Calculate safe navigation route error:", error);
 

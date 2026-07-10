@@ -16,7 +16,7 @@ import {
   LeafletMapView,
   LeafletMapViewRef,
 } from "../../components/LeafletMapView";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronLeft,
@@ -161,6 +161,7 @@ export default function NavigationScreen() {
   const activeShare = useLiveShareStore((state) => state.activeShare);
 const setActiveShare = useLiveShareStore((state) => state.setActiveShare);
 const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
+const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 const sosEscalationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
   null
 );
@@ -175,6 +176,9 @@ const sosEscalationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
 
   const [rerouting, setRerouting] = useState(false);
 const [rerouteCount, setRerouteCount] = useState(0);
+
+const [demoWalking, setDemoWalking] = useState(false);
+const [demoStepIndex, setDemoStepIndex] = useState(0);
 
   const [userLocation, setUserLocation] = useState<MapCoordinate | null>(null);
   const [destination, setDestination] = useState<MapCoordinate | null>(null);
@@ -213,6 +217,25 @@ const [creatingShare, setCreatingShare] = useState(false);
     },
     []
   );
+
+  useEffect(() => {
+  return () => {
+    if (demoIntervalRef.current) {
+      clearInterval(demoIntervalRef.current);
+      demoIntervalRef.current = null;
+    }
+
+    if (locationSubscriptionRef.current) {
+      locationSubscriptionRef.current.remove();
+      locationSubscriptionRef.current = null;
+    }
+
+    if (sosEscalationTimerRef.current) {
+      clearTimeout(sosEscalationTimerRef.current);
+      sosEscalationTimerRef.current = null;
+    }
+  };
+}, []);
 
   const handleSafeCheckIn = async () => {
   if (!activeShare?.shareToken) {
@@ -266,6 +289,8 @@ const [creatingShare, setCreatingShare] = useState(false);
   const handleSearchChange = async (value: string) => {
     setSearchText(value);
     setDestinationName(value);
+    stopDemoWalk();
+setDemoStepIndex(0);
     setRoute(null);
     setPassedRoute([]);
     setRemainingRoute([]);
@@ -799,7 +824,120 @@ startSafetyCheckCountdown(warningMessage);
   }
 };
 
+const stopDemoWalk = () => {
+  if (demoIntervalRef.current) {
+    clearInterval(demoIntervalRef.current);
+    demoIntervalRef.current = null;
+  }
+
+  setDemoWalking(false);
+};
+
+const handleStartDemoWalk = async () => {
+  if (!route?.coordinates.length) {
+    Alert.alert("No Route", "Calculate a safe route first.");
+    return;
+  }
+
+  if (demoWalking) {
+    stopDemoWalk();
+    return;
+  }
+
+  let liveShareToken = activeShare?.shareToken;
+
+  try {
+    if (!liveShareToken) {
+      const startPoint = route.coordinates[0];
+
+      const liveShare = await createLiveShareSessionApi({
+        ownerName: "SafeWalk Demo User",
+        friendName: friendName || "Supervisor",
+        friendPhone,
+        mode: "walk_home",
+        destinationName: destinationName || "Selected destination",
+        destinationLocation: destination
+          ? {
+              latitude: destination.latitude,
+              longitude: destination.longitude,
+              timestamp: new Date().toISOString(),
+            }
+          : null,
+        currentLocation: {
+          latitude: startPoint.latitude,
+          longitude: startPoint.longitude,
+          timestamp: new Date().toISOString(),
+        },
+        routeRiskLevel: route.riskLevel,
+        routeRiskScore: route.riskScore,
+        expectedArrivalAt: null,
+      });
+
+      setActiveShare(liveShare);
+      liveShareToken = liveShare.shareToken;
+    }
+
+    setDemoWalking(true);
+    setIsTracking(true);
+    setDemoStepIndex(0);
+
+    let index = 0;
+
+    demoIntervalRef.current = setInterval(() => {
+      const coordinate = route.coordinates[index];
+
+      if (!coordinate) {
+        stopDemoWalk();
+
+        Alert.alert(
+          "Demo Complete",
+          "The simulated Walk Home movement has reached the destination."
+        );
+
+        return;
+      }
+
+      setUserLocation(coordinate);
+      setDemoStepIndex(index);
+      updatePassedAndRemainingRoute(coordinate);
+      checkCurrentAreaRisk(coordinate);
+
+      if (liveShareToken) {
+        updateLiveShareLocationApi(liveShareToken, {
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          timestamp: new Date().toISOString(),
+        }).catch((error) => {
+          console.log("Demo live location update failed:", error);
+        });
+      }
+
+      mapRef.current?.animateCamera({
+        center: coordinate,
+        zoom: 17,
+      });
+
+      index += Math.max(1, Math.floor(route.coordinates.length / 40));
+    }, 1500);
+
+    Alert.alert(
+      "Demo Walk Started",
+      "SafeWalk AI is now simulating a student walking along the selected route."
+    );
+  } catch (error) {
+    console.log("Demo walk failed:", error);
+
+    Alert.alert(
+      "Demo Failed",
+      "Could not start demo walk. Check that your backend is running."
+    );
+
+    stopDemoWalk();
+  }
+};
+
   const handleStopTracking = async () => {
+    stopDemoWalk();
     if (sosEscalationTimerRef.current) {
   clearTimeout(sosEscalationTimerRef.current);
   sosEscalationTimerRef.current = null;
@@ -817,11 +955,15 @@ startSafetyCheckCountdown(warningMessage);
   clearActiveShare();
 };
 
+
+
   const handleClearDestination = () => {
     setDestination(null);
     setDestinationName("");
     setSearchText("");
     setSuggestions([]);
+    stopDemoWalk();
+setDemoStepIndex(0);
     setRoute(null);
     setPassedRoute([]);
     setRemainingRoute([]);
@@ -1012,6 +1154,19 @@ startSafetyCheckCountdown(warningMessage);
               </View>
 
               <View style={styles.routeStat}>
+  <Footprints size={18} color={COLORS.primary} />
+  <Text style={styles.routeStatValue}>
+    {route?.coordinates.length
+      ? `${Math.min(
+          100,
+          Math.round((demoStepIndex / route.coordinates.length) * 100)
+        )}%`
+      : "0%"}
+  </Text>
+  <Text style={styles.routeStatLabel}>Demo</Text>
+</View>
+
+              <View style={styles.routeStat}>
   <Navigation size={18} color={COLORS.primary} />
   <Text style={styles.routeStatValue}>{rerouteCount}</Text>
   <Text style={styles.routeStatLabel}>Reroutes</Text>
@@ -1147,6 +1302,14 @@ startSafetyCheckCountdown(warningMessage);
               loading={loadingRoute}
               disabled={loadingRoute}
             />
+
+            {route ? (
+  <AppButton
+    title={demoWalking ? "Stop Demo Walk" : "Start Demo Walk"}
+    onPress={handleStartDemoWalk}
+    variant="secondary"
+  />
+) : null}
 
             {route ? (
   <AppButton

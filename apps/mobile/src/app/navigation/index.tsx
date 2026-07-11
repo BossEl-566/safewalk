@@ -40,6 +40,7 @@ import {
   SPACING,
 } from "../../constants/theme";
 import { calculateSafeNavigationRouteApi } from "../../lib/navigationApi";
+import { SafetyCheckInModal } from "../../components/SafetyCheckInModal";
 import {
   autocompletePlacesApi,
   getPlaceDetailsApi,
@@ -165,6 +166,8 @@ const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 const sosEscalationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
   null
 );
+const checkInIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+const checkInCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mapRef = useRef<LeafletMapViewRef | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
@@ -200,6 +203,9 @@ const [demoStepIndex, setDemoStepIndex] = useState(0);
   const [offRouteWarningShown, setOffRouteWarningShown] = useState(false);
   const [currentAreaRisk, setCurrentAreaRisk] =
   useState<LocationRiskResult | null>(null);
+  const [checkInModalVisible, setCheckInModalVisible] = useState(false);
+const [checkInCountdown, setCheckInCountdown] = useState(60);
+const [distanceCoveredMeters, setDistanceCoveredMeters] = useState(0);
 
 const [dangerAreaWarningShown, setDangerAreaWarningShown] = useState(false);
 
@@ -220,6 +226,7 @@ const [creatingShare, setCreatingShare] = useState(false);
 
   useEffect(() => {
   return () => {
+    clearCheckInTimers();
     if (demoIntervalRef.current) {
       clearInterval(demoIntervalRef.current);
       demoIntervalRef.current = null;
@@ -342,6 +349,26 @@ setDemoStepIndex(0);
       setSearching(false);
     }
   };
+
+  function formatDistanceCovered(meters: number) {
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(2)} km`;
+  }
+
+  return `${Math.round(meters)} m`;
+}
+
+function calculatePolylineDistance(points: MapCoordinate[]) {
+  if (points.length < 2) return 0;
+
+  let total = 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    total += getDistanceMeters(points[index - 1], points[index]);
+  }
+
+  return total;
+}
 
   const getFreshCurrentLocation = async (): Promise<MapCoordinate | null> => {
   try {
@@ -502,11 +529,12 @@ if (!currentLocation) {
 
       if (typeof nearest === "number") return;
 
-      const passed = route.coordinates.slice(0, nearest.nearestIndex + 1);
-      const remaining = route.coordinates.slice(nearest.nearestIndex);
+     const passed = route.coordinates.slice(0, nearest.nearestIndex + 1);
+const remaining = route.coordinates.slice(nearest.nearestIndex);
 
-      setPassedRoute(passed);
-      setRemainingRoute(remaining);
+setPassedRoute(passed);
+setRemainingRoute(remaining);
+setDistanceCoveredMeters(calculatePolylineDistance(passed));
 
       if (nearest.nearestDistance > 80 && !offRouteWarningShown) {
   setOffRouteWarningShown(true);
@@ -699,6 +727,78 @@ startSafetyCheckCountdown(warningMessage);
   [dangerAreaWarningShown]
 );
 
+const clearCheckInTimers = () => {
+  if (checkInIntervalRef.current) {
+    clearInterval(checkInIntervalRef.current);
+    checkInIntervalRef.current = null;
+  }
+
+  if (checkInCountdownRef.current) {
+    clearInterval(checkInCountdownRef.current);
+    checkInCountdownRef.current = null;
+  }
+};
+
+const closeCheckInModal = () => {
+  setCheckInModalVisible(false);
+
+  if (checkInCountdownRef.current) {
+    clearInterval(checkInCountdownRef.current);
+    checkInCountdownRef.current = null;
+  }
+
+  setCheckInCountdown(60);
+};
+
+const triggerSafetyCheckInPopup = () => {
+  if (!isTracking || !activeShare?.shareToken) return;
+
+  setCheckInCountdown(60);
+  setCheckInModalVisible(true);
+
+  if (checkInCountdownRef.current) {
+    clearInterval(checkInCountdownRef.current);
+  }
+
+  checkInCountdownRef.current = setInterval(() => {
+    setCheckInCountdown((current) => {
+      if (current <= 1) {
+        if (checkInCountdownRef.current) {
+          clearInterval(checkInCountdownRef.current);
+          checkInCountdownRef.current = null;
+        }
+
+        setCheckInModalVisible(false);
+
+        handleEscalateToSOS(
+          "User missed periodic safety check-in during Walk Home."
+        );
+
+        return 60;
+      }
+
+      return current - 1;
+    });
+  }, 1000);
+};
+
+const startPeriodicCheckIns = () => {
+  if (checkInIntervalRef.current) {
+    clearInterval(checkInIntervalRef.current);
+  }
+
+  // For real use, change 120000 to 300000 or 600000.
+  // 120000 = every 2 minutes.
+  checkInIntervalRef.current = setInterval(() => {
+    triggerSafetyCheckInPopup();
+  }, 30000);
+};
+
+const handleModalCheckIn = async () => {
+  closeCheckInModal();
+  await handleSafeCheckIn();
+};
+
  const handleStartTracking = async () => {
   if (!route) {
     Alert.alert("No Route", "Calculate a route first.");
@@ -756,6 +856,7 @@ startSafetyCheckCountdown(warningMessage);
     }
 
     setIsTracking(true);
+    startPeriodicCheckIns();
 
     const subscription = await Location.watchPositionAsync(
       {
@@ -880,6 +981,7 @@ const handleStartDemoWalk = async () => {
     setDemoWalking(true);
     setIsTracking(true);
     setDemoStepIndex(0);
+    startPeriodicCheckIns();
 
     let index = 0;
 
@@ -937,6 +1039,8 @@ const handleStartDemoWalk = async () => {
 };
 
   const handleStopTracking = async () => {
+    clearCheckInTimers();
+closeCheckInModal();
     stopDemoWalk();
     if (sosEscalationTimerRef.current) {
   clearTimeout(sosEscalationTimerRef.current);
@@ -1361,6 +1465,13 @@ setDemoStepIndex(0);
     disabled={escalatingSOS}
   />
 ) : null}
+{isTracking ? (
+  <AppButton
+    title="Show Safety Check-In"
+    onPress={triggerSafetyCheckInPopup}
+    variant="secondary"
+  />
+) : null}
 
 {activeShare?.shareToken ? (
   <AppButton
@@ -1380,6 +1491,18 @@ setDemoStepIndex(0);
           </View>
         </BottomSheetScrollView>
       </BottomSheet>
+      <SafetyCheckInModal
+  visible={checkInModalVisible}
+  distanceCoveredText={formatDistanceCovered(distanceCoveredMeters)}
+  etaText={route ? formatGoogleDuration(route.duration) : "Unknown"}
+  countdownSeconds={checkInCountdown}
+  riskLevel={currentAreaRisk?.riskLevel ?? route?.riskLevel ?? "low"}
+  onCheckIn={handleModalCheckIn}
+  onSendSOS={() =>
+    handleEscalateToSOS("User manually escalated SOS from safety check-in popup.")
+  }
+  onClose={closeCheckInModal}
+/>
     </View>
   );
 }

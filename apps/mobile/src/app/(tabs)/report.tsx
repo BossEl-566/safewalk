@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import {
@@ -12,6 +12,11 @@ import {
   ShieldAlert,
   UserRound,
 } from "lucide-react-native";
+import {
+  autocompletePlacesApi,
+  getPlaceDetailsApi,
+} from "../../lib/placeApi";
+import { PlaceSuggestion } from "../../types/place";
 
 import { Screen } from "../../components/Screen";
 import { AppButton } from "../../components/AppButton";
@@ -112,6 +117,13 @@ export default function ReportScreen() {
   const [areaType, setAreaType] = useState<IncidentAreaType>("off_campus");
 
   const [locationName, setLocationName] = useState("");
+  const [locationSuggestions, setLocationSuggestions] = useState<PlaceSuggestion[]>([]);
+const [searchingLocation, setSearchingLocation] = useState(false);
+const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+} | null>(null);
   const [description, setDescription] = useState("");
   const [attackerMode, setAttackerMode] = useState("");
   const [lightingCondition, setLightingCondition] = useState("");
@@ -121,6 +133,34 @@ export default function ReportScreen() {
   const [anonymous, setAnonymous] = useState(anonymousReportingDefault);
 
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+  const query = locationName.trim();
+
+  if (query.length < 2) {
+    setLocationSuggestions([]);
+    return;
+  }
+
+  if (selectedPlaceLocation) {
+    return;
+  }
+
+  const timer = setTimeout(async () => {
+    try {
+      setSearchingLocation(true);
+      const suggestions = await autocompletePlacesApi(query);
+      setLocationSuggestions(suggestions);
+    } catch (error) {
+      console.log("Location autocomplete failed:", error);
+      setLocationSuggestions([]);
+    } finally {
+      setSearchingLocation(false);
+    }
+  }, 500);
+
+  return () => clearTimeout(timer);
+}, [locationName, selectedPlaceLocation]);
 
   const handleSubmitReport = async () => {
   if (!description.trim()) {

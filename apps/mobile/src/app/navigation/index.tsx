@@ -1464,7 +1464,7 @@ setDemoStepIndex(0);
     loading={escalatingSOS}
     disabled={escalatingSOS}
   />
-) : null}
+) : null} 
 {isTracking ? (
   <AppButton
     title="Show Safety Check-In"

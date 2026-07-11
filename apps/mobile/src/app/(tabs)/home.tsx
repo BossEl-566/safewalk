@@ -1,73 +1,97 @@
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { ShieldAlert } from "lucide-react-native";
+
 import { useContactStore } from "../../store/contactStore";
 import { useSOSStore } from "../../store/sosStore";
 import { getCurrentLocation } from "../../lib/location";
-import { router } from "expo-router";
 import { Screen } from "../../components/Screen";
 import { SafetyCard } from "../../components/SafetyCard";
 import { SectionHeader } from "../../components/SectionHeader";
-import { EmergencyButton } from "../../components/EmergencyButton";
-import { COLORS, FONT_SIZE, RADIUS, SPACING } from "../../constants/theme";
+import { COLORS, FONT_SIZE, RADIUS, SHADOWS, SPACING } from "../../constants/theme";
 import { createSOSAlertApi } from "../../lib/sosApi";
+
+type SOSCircleButtonProps = {
+  onPress: () => void;
+};
+
+function SOSCircleButton({ onPress }: SOSCircleButtonProps) {
+  return (
+    <View style={styles.sosCircleOuter}>
+      <View style={styles.sosCircleMiddle}>
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => [
+            styles.sosCircleButton,
+            pressed && styles.sosCircleButtonPressed,
+          ]}
+        >
+          <ShieldAlert size={34} color={COLORS.white} />
+          <Text style={styles.sosCircleText}>SOS</Text>
+          <Text style={styles.sosCircleSubText}>Tap for help</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function HomeScreen() {
   const contacts = useContactStore((state) => state.contacts);
-const createSOSAlert = useSOSStore((state) => state.createSOSAlert);
+  const createSOSAlert = useSOSStore((state) => state.createSOSAlert);
 
-const handleSOSPress = async () => {
-  if (contacts.length === 0) {
-    Alert.alert(
-      "No Emergency Contacts",
-      "Add at least one trusted contact before using SOS.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Add Contact",
-          onPress: () => router.push("/contacts"),
-        },
-      ]
-    );
+  const handleSOSPress = async () => {
+    if (contacts.length === 0) {
+      Alert.alert(
+        "No Emergency Contacts",
+        "Add at least one trusted contact before using SOS.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Add Contact",
+            onPress: () => router.push("/contacts"),
+          },
+        ]
+      );
 
-    return;
-  }
+      return;
+    }
 
-  try {
-    const location = await getCurrentLocation();
+    try {
+      const location = await getCurrentLocation();
 
-    const alertId = createSOSAlert({
-      userName: "SafeWalk User",
-      location,
-    });
+      const alertId = createSOSAlert({
+        userName: "SafeWalk User",
+        location,
+      });
 
-    const alert = useSOSStore.getState().getAlertById(alertId);
+      const alert = useSOSStore.getState().getAlertById(alertId);
 
-if (alert) {
-  createSOSAlertApi({
-    userName: alert.userName,
-    location: alert.location,
-    message: alert.message,
-    source: "sos_button",
-    trustedContactName: contacts[0]?.name ?? "",
-    trustedContactPhone: contacts[0]?.phone ?? "",
-  }).catch((error) => {
-    console.log("SOS backend sync failed:", error);
-  });
-}
+      if (alert) {
+        createSOSAlertApi({
+          userName: alert.userName,
+          location: alert.location,
+          message: alert.message,
+          source: "sos_button",
+          trustedContactName: contacts[0]?.name ?? "",
+          trustedContactPhone: contacts[0]?.phone ?? "",
+        }).catch((error) => {
+          console.log("SOS backend sync failed:", error);
+        });
+      }
 
-    router.push({
-      pathname: "/sos/active",
-      params: { alertId },
-    });
-  } catch (error) {
-    Alert.alert(
-      "Location Error",
-      error instanceof Error
-        ? error.message
-        : "Unable to get your current location."
-        
-    );
-  }
-};
+      router.push({
+        pathname: "/sos/active",
+        params: { alertId },
+      });
+    } catch (error) {
+      Alert.alert(
+        "Location Error",
+        error instanceof Error
+          ? error.message
+          : "Unable to get your current location."
+      );
+    }
+  };
 
   return (
     <Screen scroll>
@@ -90,10 +114,11 @@ if (alert) {
           Send your live location to trusted contacts during danger or emergency.
         </Text>
 
-        <EmergencyButton
-          onPress={handleSOSPress}
-          style={styles.sosButton}
-        />
+        <SOSCircleButton onPress={handleSOSPress} />
+
+        <Text style={styles.sosHint}>
+          Your location will be sent to your trusted contact immediately.
+        </Text>
       </View>
 
       <View style={styles.section}>
@@ -126,18 +151,16 @@ if (alert) {
             description="Report phone snatching, robbery, or suspicious activity."
             icon="⚠️"
             onPress={() => router.push("/(tabs)/report")}
-            
             style={styles.gridCard}
           />
 
-
           <SafetyCard
-  title="Contacts"
-  description="Manage people who receive emergency alerts."
-  icon="👥"
-  onPress={() => router.push("/contacts")}
-  style={styles.gridCard}
-/>
+            title="Contacts"
+            description="Manage people who receive emergency alerts."
+            icon="👥"
+            onPress={() => router.push("/contacts")}
+            style={styles.gridCard}
+          />
         </View>
       </View>
 
@@ -191,6 +214,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
+    ...SHADOWS.soft,
   },
 
   heroTitle: {
@@ -207,8 +231,70 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
 
-  sosButton: {
-    marginTop: SPACING.xl,
+  sosCircleOuter: {
+    marginTop: SPACING.xxl,
+    width: 290,
+    height: 290,
+    borderRadius: 145,
+    backgroundColor: "rgba(220, 38, 38, 0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.10)",
+  },
+
+  sosCircleMiddle: {
+    width: 205,
+    height: 205,
+    borderRadius: 103,
+    backgroundColor: "rgba(220, 38, 38, 0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.18)",
+  },
+
+  sosCircleButton: {
+    width: 138,
+    height: 138,
+    borderRadius: 80,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.danger,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+
+  sosCircleButtonPressed: {
+    transform: [{ scale: 0.96 }],
+    opacity: 0.9,
+  },
+
+  sosCircleText: {
+    marginTop: SPACING.xs,
+    color: COLORS.white,
+    fontSize: FONT_SIZE.xl,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+
+  sosCircleSubText: {
+    marginTop: 2,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "800",
+  },
+
+  sosHint: {
+    marginTop: SPACING.lg,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    textAlign: "center",
+    fontWeight: "700",
+    lineHeight: 18,
   },
 
   section: {
@@ -239,7 +325,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: COLORS.warningDark,
   },
-  
 
   warningText: {
     marginTop: SPACING.xs,

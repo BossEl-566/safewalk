@@ -1,14 +1,25 @@
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AlertTriangle,
-  BarChart3,
   Brain,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
   CircleAlert,
-  Clock,
   Database,
+  LocateFixed,
   MapPin,
+  Plus,
   RefreshCcw,
   ShieldCheck,
   Trash2,
@@ -17,7 +28,7 @@ import {
 
 import { Screen } from "../../components/Screen";
 import { AppButton } from "../../components/AppButton";
-import { SectionHeader } from "../../components/SectionHeader";
+import { LeafletMapView } from "../../components/LeafletMapView";
 import {
   COLORS,
   FONT_SIZE,
@@ -27,21 +38,24 @@ import {
 } from "../../constants/theme";
 import { useIncidentStore } from "../../store/incidentStore";
 import { IncidentReport } from "../../types/incident";
-import { RiskMapView } from "../../components/RiskMapView";
-import {
-  getHighRiskReports,
-  getLocationInsights,
-  getRecentReports,
-  getRiskLevelLabel,
-  getRiskStats,
-  getTopIncidentPattern,
-  RiskLevel,
-} from "../../utils/riskIntelligence";
 import {
   createIncidentReportApi,
   deleteIncidentReportApi,
   getIncidentReportsApi,
 } from "../../lib/incidentApi";
+import {
+  getRiskLevelLabel,
+  getRiskStats,
+  getTopIncidentPattern,
+  RiskLevel,
+} from "../../utils/riskIntelligence";
+
+type FeedMode = "mapped" | "all";
+
+const DEFAULT_MAP_CENTER = {
+  latitude: 6.6743,
+  longitude: -1.5712,
+};
 
 function getRiskColor(level: RiskLevel) {
   if (level === "critical") return COLORS.danger;
@@ -50,37 +64,26 @@ function getRiskColor(level: RiskLevel) {
   return COLORS.primary;
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function getReportRiskLevel(score: number): RiskLevel {
+  if (score >= 85) return "critical";
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
+  return "low";
 }
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString([], {
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-}) {
-  return (
-    <View style={styles.statCard}>
-      <View style={styles.statIcon}>{icon}</View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
+function formatArea(value: string) {
+  return value.replace("_", " ");
 }
 
 function SyncStatusCard({
@@ -96,23 +99,39 @@ function SyncStatusCard({
 }) {
   return (
     <View style={styles.syncCard}>
-      <View style={styles.syncIcon}>
+      <View
+        style={[
+          styles.syncIcon,
+          {
+            backgroundColor: usingBackend
+              ? COLORS.primaryLight
+              : COLORS.warningLight,
+          },
+        ]}
+      >
         {usingBackend ? (
-          <Database size={22} color={COLORS.primary} />
+          <Database size={21} color={COLORS.primary} />
         ) : (
-          <WifiOff size={22} color={COLORS.warning} />
+          <WifiOff size={21} color={COLORS.warning} />
         )}
       </View>
 
       <View style={styles.syncContent}>
         <Text style={styles.syncTitle}>
-          {usingBackend ? "Connected to MongoDB" : "Using local fallback"}
+          {usingBackend ? "Database connected" : "Local fallback active"}
         </Text>
 
         <Text style={styles.syncText}>
           {usingBackend
-            ? `Backend reports loaded${lastSyncAt ? ` at ${formatTime(lastSyncAt)}` : ""}.`
-            : "Could not fetch backend reports. Showing reports saved on this phone."}
+            ? `Reports loaded${
+                lastSyncAt
+                  ? ` at ${new Date(lastSyncAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                  : ""
+              }.`
+            : "Could not fetch backend reports. Showing local reports."}
         </Text>
       </View>
 
@@ -120,115 +139,124 @@ function SyncStatusCard({
         {loading ? (
           <ActivityIndicator size="small" color={COLORS.primary} />
         ) : (
-          <RefreshCcw size={19} color={COLORS.primary} />
+          <RefreshCcw size={18} color={COLORS.primary} />
         )}
       </Pressable>
     </View>
   );
 }
 
-function RiskInsightCard({
+function SegmentButton({
   title,
-  description,
-  score,
-  level,
+  active,
+  onPress,
 }: {
   title: string;
-  description: string;
-  score: number;
-  level: RiskLevel;
+  active: boolean;
+  onPress: () => void;
 }) {
-  const color = getRiskColor(level);
-
   return (
-    <View style={styles.insightCard}>
-      <View style={styles.insightHeader}>
-        <View style={[styles.riskDot, { backgroundColor: color }]} />
-        <Text style={styles.insightTitle}>{title}</Text>
-
-        <View style={[styles.scorePill, { backgroundColor: `${color}1A` }]}>
-          <Text style={[styles.scoreText, { color }]}>{score}</Text>
-        </View>
-      </View>
-
-      <Text style={styles.insightDescription}>{description}</Text>
-
-      <Text style={[styles.riskLabel, { color }]}>
-        Risk level: {level.toUpperCase()}
+    <Pressable
+      onPress={onPress}
+      style={[styles.segmentButton, active && styles.segmentButtonActive]}
+    >
+      <Text
+        style={[styles.segmentText, active && styles.segmentTextActive]}
+      >
+        {title}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
-function IncidentCard({
+function ReportFeedCard({
   report,
+  expanded,
+  onToggle,
   onDelete,
 }: {
   report: IncidentReport;
+  expanded: boolean;
+  onToggle: () => void;
   onDelete: () => void;
 }) {
+  const riskLevel = getReportRiskLevel(report.aiRiskScore);
+  const riskColor = getRiskColor(riskLevel);
   const riskLabel = getRiskLevelLabel(report.aiRiskScore);
 
-  const riskLevel: RiskLevel =
-    report.aiRiskScore >= 85
-      ? "critical"
-      : report.aiRiskScore >= 70
-        ? "high"
-        : report.aiRiskScore >= 40
-          ? "medium"
-          : "low";
-
-  const riskColor = getRiskColor(riskLevel);
-
   return (
-    <View style={styles.reportCard}>
-      <View style={styles.reportHeader}>
-        <View style={styles.reportIcon}>
-          <CircleAlert size={22} color={riskColor} />
+    <View style={styles.feedCard}>
+      <Pressable onPress={onToggle} style={styles.feedHeader}>
+        <View style={[styles.feedIconBox, { backgroundColor: `${riskColor}1A` }]}>
+          <CircleAlert size={21} color={riskColor} />
         </View>
 
-        <View style={styles.reportHeaderText}>
-          <Text style={styles.reportTitle}>{report.title}</Text>
-          <Text style={styles.reportMeta}>
-            {formatDate(report.createdAt)} • {formatTime(report.createdAt)}
+        <View style={styles.feedHeaderText}>
+          <Text numberOfLines={1} style={styles.feedTitle}>
+            {report.locationName || report.title}
           </Text>
+
+          <View style={styles.feedMetaRow}>
+            <Text style={styles.feedMeta}>{formatDateTime(report.createdAt)}</Text>
+            <Text style={styles.feedDot}>|</Text>
+            <Text style={[styles.feedSeverity, { color: riskColor }]}>
+              Severity: {report.severity}
+            </Text>
+          </View>
         </View>
 
-        <Pressable onPress={onDelete} style={styles.deleteButton}>
-          <Trash2 size={18} color={COLORS.danger} />
-        </Pressable>
-      </View>
-
-      <View style={styles.locationRow}>
-        <MapPin size={16} color={COLORS.mutedText} />
-        <Text style={styles.locationText}>
-          {report.locationName || "Location name not provided"}
-        </Text>
-      </View>
-
-      <Text style={styles.reportDescription}>{report.description}</Text>
-
-      <View style={styles.reportFooter}>
-        <View style={[styles.riskBadge, { backgroundColor: `${riskColor}1A` }]}>
-          <Text style={[styles.riskBadgeText, { color: riskColor }]}>
-            {riskLabel} • {report.aiRiskScore}
-          </Text>
+        <View style={styles.expandButton}>
+          {expanded ? (
+            <ChevronUp size={20} color={COLORS.mutedText} />
+          ) : (
+            <ChevronDown size={20} color={COLORS.mutedText} />
+          )}
         </View>
+      </Pressable>
 
-        <Text style={styles.areaText}>
-          {report.areaType.replace("_", " ")}
-        </Text>
-      </View>
+      {expanded ? (
+        <View style={styles.feedExpanded}>
+          <Text style={styles.feedDescription}>{report.description}</Text>
 
-      <View style={styles.aiBox}>
-        <Brain size={16} color={COLORS.primary} />
-        <Text style={styles.aiText}>{report.aiSummary}</Text>
-      </View>
+          <View style={styles.feedLocationRow}>
+            <MapPin size={16} color={COLORS.mutedText} />
+            <Text style={styles.feedLocationText}>
+              {report.locationName || "Location name not provided"}
+            </Text>
+          </View>
+
+          <View style={styles.feedFooter}>
+            <View style={[styles.riskBadge, { backgroundColor: `${riskColor}1A` }]}>
+              <Text style={[styles.riskBadgeText, { color: riskColor }]}>
+                {riskLabel} • {report.aiRiskScore}
+              </Text>
+            </View>
+
+            <Text style={styles.areaText}>{formatArea(report.areaType)}</Text>
+          </View>
+
+          {report.aiSummary ? (
+            <View style={styles.aiBox}>
+              <Brain size={16} color={COLORS.primary} />
+              <Text style={styles.aiText}>{report.aiSummary}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.feedActions}>
+            <Pressable onPress={onDelete} style={styles.deleteAction}>
+              <Trash2 size={16} color={COLORS.danger} />
+              <Text style={styles.deleteActionText}>Delete report</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 export default function RiskMapScreen() {
+  const insets = useSafeAreaInsets();
+
   const localReports = useIncidentStore((state) => state.reports);
   const deleteLocalReport = useIncidentStore((state) => state.deleteReport);
   const createLocalReport = useIncidentStore((state) => state.createReport);
@@ -238,6 +266,8 @@ export default function RiskMapScreen() {
   const [loadingReports, setLoadingReports] = useState(false);
   const [usingBackend, setUsingBackend] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [feedMode, setFeedMode] = useState<FeedMode>("mapped");
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
 
   const fetchBackendReports = useCallback(async () => {
     try {
@@ -264,11 +294,39 @@ export default function RiskMapScreen() {
 
   const reports = usingBackend ? backendReports : localReports;
 
+  const mappedReports = useMemo(() => {
+    return reports.filter(
+      (report) =>
+        report.location &&
+        typeof report.location.latitude === "number" &&
+        typeof report.location.longitude === "number"
+    );
+  }, [reports]);
+
+  const visibleReports = feedMode === "mapped" ? mappedReports : reports;
+
   const stats = getRiskStats(reports);
   const topPattern = getTopIncidentPattern(reports);
-  const highRiskReports = getHighRiskReports(reports);
-  const recentReports = getRecentReports(reports);
-  const locationInsights = getLocationInsights(reports);
+
+  const mapCenter = mappedReports[0]?.location
+    ? {
+        latitude: mappedReports[0].location.latitude,
+        longitude: mappedReports[0].location.longitude,
+      }
+    : DEFAULT_MAP_CENTER;
+
+  const dangerMarkers = mappedReports.map((report) => {
+    const riskLevel = getReportRiskLevel(report.aiRiskScore);
+
+    return {
+      latitude: report.location?.latitude ?? DEFAULT_MAP_CENTER.latitude,
+      longitude: report.location?.longitude ?? DEFAULT_MAP_CENTER.longitude,
+      title: report.locationName || report.title,
+      description: report.description,
+      riskLevel,
+      riskScore: report.aiRiskScore,
+    };
+  });
 
   const handleDeleteReport = (reportId: string) => {
     Alert.alert("Delete Report", "Remove this incident report?", [
@@ -352,7 +410,7 @@ export default function RiskMapScreen() {
         },
         victimWasAlone: true,
         weaponInvolved: true,
-        attackerMode: "Walking gang",
+        attackerMode: "Walking group",
         lightingCondition: "Dark road",
         anonymous: true,
       },
@@ -401,16 +459,22 @@ export default function RiskMapScreen() {
 
   return (
     <Screen scroll>
-      <View style={styles.heroCard}>
-        <View style={styles.heroIcon}>
-          <BarChart3 size={34} color={COLORS.primary} />
+      <View style={styles.header}>
+        <View style={styles.headerTextBox}>
+          <Text style={styles.overline}>Live risk intelligence</Text>
+          <Text style={styles.title}>Risk Map</Text>
+          <Text style={styles.subtitle}>
+            View danger zones, mapped reports, and recent safety incidents.
+          </Text>
         </View>
 
-        <Text style={styles.heroTitle}>Risk Intelligence</Text>
-        <Text style={styles.heroText}>
-          SafeWalk AI turns student reports into safety insights, risk scores,
-          and hotspot warnings.
-        </Text>
+        <Pressable onPress={fetchBackendReports} style={styles.headerRefresh}>
+          {loadingReports ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <RefreshCcw size={20} color={COLORS.primary} />
+          )}
+        </Pressable>
       </View>
 
       <SyncStatusCard
@@ -420,51 +484,129 @@ export default function RiskMapScreen() {
         onRefresh={fetchBackendReports}
       />
 
-      <View style={styles.section}>
-  <SectionHeader
-    title="Visual Risk Map"
-    subtitle="Incident reports with GPS coordinates are displayed as danger-zone markers."
-  />
+      <View style={styles.mapCard}>
+        <View style={styles.mapTopRow}>
+          <View>
+            <Text style={styles.mapTitle}>Visual Risk Map</Text>
+            <Text style={styles.mapSubtitle}>
+              {mappedReports.length} mapped report
+              {mappedReports.length === 1 ? "" : "s"} found
+            </Text>
+          </View>
 
-  <RiskMapView reports={reports} />
-</View>
+          <View style={styles.mapPill}>
+            <LocateFixed size={14} color={COLORS.primary} />
+            <Text style={styles.mapPillText}>Around me</Text>
+          </View>
+        </View>
 
-      <View style={styles.statsGrid}>
-        <StatCard
-          label="Total Reports"
-          value={stats.totalReports}
-          icon={<MapPin size={22} color={COLORS.primary} />}
+        <View style={styles.mapBox}>
+          <LeafletMapView
+            style={styles.map}
+            center={mapCenter}
+            zoom={15}
+            dangerMarkers={dangerMarkers as any}
+          />
+
+          {mappedReports.length === 0 ? (
+            <View style={styles.mapEmptyOverlay}>
+              <MapPin size={28} color={COLORS.primary} />
+              <Text style={styles.mapEmptyTitle}>No mapped reports yet</Text>
+              <Text style={styles.mapEmptyText}>
+                Add reports with GPS coordinates to display danger markers here.
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.overviewRow}>
+        <View style={styles.overviewCard}>
+          <Text style={styles.overviewValue}>{stats.totalReports}</Text>
+          <Text style={styles.overviewLabel}>Total Reports</Text>
+        </View>
+
+        <View style={styles.overviewCard}>
+          <Text style={[styles.overviewValue, { color: COLORS.danger }]}>
+            {stats.criticalReports}
+          </Text>
+          <Text style={styles.overviewLabel}>Critical</Text>
+        </View>
+
+        <View style={styles.overviewCard}>
+          <Text style={[styles.overviewValue, { color: COLORS.warning }]}>
+            {stats.averageRiskScore}
+          </Text>
+          <Text style={styles.overviewLabel}>Avg. Score</Text>
+        </View>
+      </View>
+
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryIcon}>
+          <Brain size={22} color={COLORS.primary} />
+        </View>
+
+        <View style={styles.summaryContent}>
+          <Text style={styles.summaryTitle}>
+            {topPattern
+              ? `${topPattern.title} is the most reported pattern`
+              : "No dominant pattern yet"}
+          </Text>
+
+          <Text style={styles.summaryText}>
+            {topPattern
+              ? `${topPattern.count} report${
+                  topPattern.count > 1 ? "s" : ""
+                } match this pattern. SafeWalk AI will use this to improve route warnings.`
+              : "More reports are needed before SafeWalk AI can detect strong safety patterns."}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.feedHeaderSection}>
+        <View>
+          <Text style={styles.feedSectionTitle}>Emergency Reports</Text>
+          <Text style={styles.feedSectionSubtitle}>
+            Review recent safety reports submitted by students.
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => router.push("/(tabs)/report")}
+          style={styles.addReportButton}
+        >
+          <Plus size={18} color={COLORS.white} />
+        </Pressable>
+      </View>
+
+      <View style={styles.segmentContainer}>
+        <SegmentButton
+          title="Mapped Reports"
+          active={feedMode === "mapped"}
+          onPress={() => setFeedMode("mapped")}
         />
 
-        <StatCard
-          label="High Risk"
-          value={stats.highRiskReports}
-          icon={<AlertTriangle size={22} color={COLORS.danger} />}
-        />
-
-        <StatCard
-          label="Critical"
-          value={stats.criticalReports}
-          icon={<CircleAlert size={22} color={COLORS.danger} />}
-        />
-
-        <StatCard
-          label="Avg. Score"
-          value={stats.averageRiskScore}
-          icon={<Brain size={22} color={COLORS.primary} />}
+        <SegmentButton
+          title="All Reports"
+          active={feedMode === "all"}
+          onPress={() => setFeedMode("all")}
         />
       </View>
 
-      {reports.length === 0 ? (
+      {visibleReports.length === 0 ? (
         <View style={styles.emptyCard}>
           <View style={styles.emptyIcon}>
-            <ShieldCheck size={44} color={COLORS.primary} />
+            <ShieldCheck size={40} color={COLORS.primary} />
           </View>
 
-          <Text style={styles.emptyTitle}>No reports yet</Text>
+          <Text style={styles.emptyTitle}>
+            {feedMode === "mapped" ? "No mapped reports" : "No reports yet"}
+          </Text>
+
           <Text style={styles.emptyText}>
-            Once students report incidents, SafeWalk AI will identify high-risk
-            areas and warn future users.
+            {feedMode === "mapped"
+              ? "Reports without GPS coordinates will not appear on the map. Add demo reports to test the map."
+              : "Once students report incidents, they will appear here."}
           </Text>
 
           <AppButton
@@ -474,165 +616,91 @@ export default function RiskMapScreen() {
           />
         </View>
       ) : (
-        <>
-          <View style={styles.section}>
-            <SectionHeader
-              title="AI Safety Summary"
-              subtitle="A quick interpretation of the current incident data."
-            />
-
-            <View style={styles.summaryCard}>
-              <Brain size={24} color={COLORS.primary} />
-
-              <View style={styles.summaryContent}>
-                <Text style={styles.summaryTitle}>
-                  {topPattern
-                    ? `${topPattern.title} is the most reported pattern`
-                    : "No dominant pattern yet"}
-                </Text>
-
-                <Text style={styles.summaryText}>
-                  {topPattern
-                    ? `${topPattern.count} report${
-                        topPattern.count > 1 ? "s" : ""
-                      } match this pattern. The current average risk score is ${
-                        stats.averageRiskScore
-                      }.`
-                    : "More reports are needed before a reliable pattern can be identified."}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {highRiskReports.length > 0 ? (
-            <View style={styles.section}>
-              <SectionHeader
-                title="High-risk warnings"
-                subtitle="These reports indicate areas or incidents that need attention."
-              />
-
-              {highRiskReports.slice(0, 3).map((report) => (
-                <RiskInsightCard
-                  key={report.id}
-                  title={report.locationName || report.title}
-                  description={report.aiSummary}
-                  score={report.aiRiskScore}
-                  level={
-                    report.aiRiskScore >= 85
-                      ? "critical"
-                      : report.aiRiskScore >= 70
-                        ? "high"
-                        : "medium"
-                  }
-                />
-              ))}
-            </View>
-          ) : null}
-
-          <View style={styles.section}>
-            <SectionHeader
-              title="Location insights"
-              subtitle="Areas are grouped using saved report locations."
-            />
-
-            {locationInsights.slice(0, 5).map((insight) => (
-              <RiskInsightCard
-                key={insight.title}
-                title={insight.title}
-                description={insight.description}
-                score={insight.riskScore}
-                level={insight.riskLevel}
-              />
-            ))}
-          </View>
-
-          <View style={styles.section}>
-            <SectionHeader
-              title="Recent reports"
-              subtitle={
-                usingBackend
-                  ? "Latest reports fetched from MongoDB."
-                  : "Latest reports saved on this phone."
+        <View style={styles.feedList}>
+          {visibleReports.map((report) => (
+            <ReportFeedCard
+              key={report.id}
+              report={report}
+              expanded={expandedReportId === report.id}
+              onToggle={() =>
+                setExpandedReportId((current) =>
+                  current === report.id ? null : report.id
+                )
               }
+              onDelete={() => handleDeleteReport(report.id)}
             />
-
-            {recentReports.map((report) => (
-              <IncidentCard
-                key={report.id}
-                report={report}
-                onDelete={() => handleDeleteReport(report.id)}
-              />
-            ))}
-          </View>
-
-          <View style={styles.actions}>
-            <AppButton
-              title="Refresh from Database"
-              onPress={fetchBackendReports}
-              variant="primary"
-              loading={loadingReports}
-            />
-
-            <AppButton
-              title="Add Demo Reports"
-              onPress={handleAddDemoReports}
-              variant="secondary"
-            />
-
-            <AppButton
-              title={usingBackend ? "Clear Disabled in Backend Mode" : "Clear Local Reports"}
-              onPress={handleClearReports}
-              variant="ghost"
-            />
-          </View>
-        </>
+          ))}
+        </View>
       )}
 
-      <View style={styles.futureMapCard}>
-        <Clock size={20} color={COLORS.info} />
+      <View style={styles.actions}>
+        <AppButton
+          title="Refresh Reports"
+          onPress={fetchBackendReports}
+          variant="primary"
+          loading={loadingReports}
+        />
 
-        <Text style={styles.futureMapText}>
-          Next improvement: add a real visual map with risk markers and route
-          warnings.
-        </Text>
+        <AppButton
+          title="Add Demo Reports"
+          onPress={handleAddDemoReports}
+          variant="secondary"
+        />
+
+        <AppButton
+          title={usingBackend ? "Clear Disabled in Backend Mode" : "Clear Local Reports"}
+          onPress={handleClearReports}
+          variant="ghost"
+        />
       </View>
+
+      <View style={{ height: insets.bottom + 130 }} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  heroCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.soft,
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SPACING.md,
   },
 
-  heroIcon: {
-    width: 74,
-    height: 74,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.lg,
+  headerTextBox: {
+    flex: 1,
   },
 
-  heroTitle: {
-    fontSize: FONT_SIZE.xl,
+  overline: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+    color: COLORS.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+
+  title: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.xxl,
     fontWeight: "900",
     color: COLORS.text,
   },
 
-  heroText: {
-    marginTop: SPACING.sm,
+  subtitle: {
+    marginTop: 4,
     fontSize: FONT_SIZE.sm,
     color: COLORS.mutedText,
-    textAlign: "center",
-    lineHeight: 21,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+
+  headerRefresh: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   syncCard: {
@@ -652,7 +720,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -684,97 +751,145 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  statsGrid: {
+  mapCard: {
     marginTop: SPACING.xl,
+    backgroundColor: COLORS.surface,
+    borderRadius: 30,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  mapTopRow: {
+    paddingHorizontal: SPACING.sm,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.md,
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: SPACING.md,
   },
 
-  statCard: {
-    width: "47%",
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.soft,
-  },
-
-  statIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.md,
-  },
-
-  statValue: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  statLabel: {
-    marginTop: 2,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-
-  emptyCard: {
-    marginTop: SPACING.xl,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.soft,
-  },
-
-  emptyIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.lg,
-  },
-
-  emptyTitle: {
+  mapTitle: {
     fontSize: FONT_SIZE.lg,
     fontWeight: "900",
     color: COLORS.text,
   },
 
-  emptyText: {
+  mapSubtitle: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "800",
+  },
+
+  mapPill: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  mapPillText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primaryDark,
+    fontWeight: "900",
+  },
+
+  mapBox: {
+    height: 360,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: COLORS.surfaceMuted,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  map: {
+    flex: 1,
+  },
+
+  mapEmptyOverlay: {
+    position: "absolute",
+    left: SPACING.lg,
+    right: SPACING.lg,
+    top: SPACING.xl,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    alignItems: "center",
+    ...SHADOWS.soft,
+  },
+
+  mapEmptyTitle: {
     marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.md,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  mapEmptyText: {
+    marginTop: SPACING.xs,
     fontSize: FONT_SIZE.sm,
     color: COLORS.mutedText,
     textAlign: "center",
-    lineHeight: 21,
+    lineHeight: 20,
+    fontWeight: "700",
   },
 
-  emptyButton: {
-    marginTop: SPACING.xl,
-    width: "100%",
+  overviewRow: {
+    marginTop: SPACING.lg,
+    flexDirection: "row",
+    gap: SPACING.md,
   },
 
-  section: {
-    marginTop: SPACING.xl,
+  overviewCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  overviewValue: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  overviewLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    color: COLORS.mutedText,
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
 
   summaryCard: {
+    marginTop: SPACING.lg,
     backgroundColor: COLORS.primaryLight,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     flexDirection: "row",
+    alignItems: "flex-start",
     gap: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(5, 150, 105, 0.18)",
+  },
+
+  summaryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   summaryContent: {
@@ -791,138 +906,175 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
     fontSize: FONT_SIZE.sm,
     color: COLORS.primaryDark,
+    fontWeight: "700",
     lineHeight: 20,
-    fontWeight: "600",
   },
 
-  insightCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: SPACING.md,
+  feedHeaderSection: {
+    marginTop: SPACING.xl,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SPACING.md,
+  },
+
+  feedSectionTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  feedSectionSubtitle: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
+
+  addReportButton: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
     ...SHADOWS.soft,
   },
 
-  insightHeader: {
+  segmentContainer: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.full,
+    padding: 5,
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  segmentButton: {
+    flex: 1,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  segmentButtonActive: {
+    backgroundColor: COLORS.primary,
+    ...SHADOWS.soft,
+  },
+
+  segmentText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.mutedText,
+    fontWeight: "900",
+  },
+
+  segmentTextActive: {
+    color: COLORS.white,
+  },
+
+  feedList: {
+    marginTop: SPACING.md,
+    gap: SPACING.md,
+  },
+
+  feedCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+    ...SHADOWS.soft,
+  },
+
+  feedHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.sm,
+    gap: SPACING.md,
+    padding: SPACING.md,
   },
 
-  riskDot: {
-    width: 10,
-    height: 10,
-    borderRadius: RADIUS.full,
+  feedIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.lg,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  insightTitle: {
+  feedHeaderText: {
     flex: 1,
+  },
+
+  feedTitle: {
     fontSize: FONT_SIZE.md,
     fontWeight: "900",
     color: COLORS.text,
   },
 
-  scorePill: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-  },
-
-  scoreText: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "900",
-  },
-
-  insightDescription: {
-    marginTop: SPACING.sm,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.mutedText,
-    lineHeight: 20,
-  },
-
-  riskLabel: {
-    marginTop: SPACING.sm,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-
-  reportCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: SPACING.md,
-    ...SHADOWS.soft,
-  },
-
-  reportHeader: {
+  feedMetaRow: {
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.md,
+    gap: 6,
   },
 
-  reportIcon: {
-    width: 44,
-    height: 44,
+  feedMeta: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+  },
+
+  feedDot: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+  },
+
+  feedSeverity: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+    textTransform: "capitalize",
+  },
+
+  expandButton: {
+    width: 32,
+    height: 32,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  reportHeaderText: {
-    flex: 1,
+  feedExpanded: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    padding: SPACING.md,
   },
 
-  reportTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  reportMeta: {
-    marginTop: 2,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-  },
-
-  deleteButton: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: SPACING.md,
-  },
-
-  locationText: {
-    flex: 1,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-  },
-
-  reportDescription: {
-    marginTop: SPACING.sm,
+  feedDescription: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.text,
     lineHeight: 21,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
-  reportFooter: {
+  feedLocationRow: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  feedLocationText: {
+    flex: 1,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "800",
+  },
+
+  feedFooter: {
     marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
@@ -944,7 +1096,7 @@ const styles = StyleSheet.create({
   areaText: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
-    fontWeight: "800",
+    fontWeight: "900",
     textTransform: "capitalize",
   },
 
@@ -966,26 +1118,70 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  actions: {
-    marginTop: SPACING.lg,
-    gap: SPACING.md,
-  },
-
-  futureMapCard: {
-    marginTop: SPACING.xl,
-    backgroundColor: COLORS.infoLight,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    flexDirection: "row",
+  feedActions: {
+    marginTop: SPACING.md,
     alignItems: "flex-start",
-    gap: SPACING.md,
   },
 
-  futureMapText: {
-    flex: 1,
+  deleteAction: {
+    backgroundColor: COLORS.dangerLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  deleteActionText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.danger,
+    fontWeight: "900",
+  },
+
+  emptyCard: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  emptyIcon: {
+    width: 82,
+    height: 82,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.lg,
+  },
+
+  emptyTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  emptyText: {
+    marginTop: SPACING.sm,
     fontSize: FONT_SIZE.sm,
-    color: COLORS.info,
+    color: COLORS.mutedText,
+    textAlign: "center",
+    lineHeight: 21,
     fontWeight: "700",
-    lineHeight: 20,
+  },
+
+  emptyButton: {
+    marginTop: SPACING.xl,
+    width: "100%",
+  },
+
+  actions: {
+    marginTop: SPACING.xl,
+    gap: SPACING.md,
   },
 });

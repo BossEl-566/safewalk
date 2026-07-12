@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AlertTriangle,
   Bike,
@@ -12,11 +13,6 @@ import {
   ShieldAlert,
   UserRound,
 } from "lucide-react-native";
-import {
-  autocompletePlacesApi,
-  getPlaceDetailsApi,
-} from "../../lib/placeApi";
-import { PlaceSuggestion } from "../../types/place";
 
 import { Screen } from "../../components/Screen";
 import { AppButton } from "../../components/AppButton";
@@ -38,6 +34,11 @@ import { useIncidentStore } from "../../store/incidentStore";
 import { getCurrentLocation } from "../../lib/location";
 import { createIncidentReportApi } from "../../lib/incidentApi";
 import { useSafetySettingsStore } from "../../store/safetySettingsStore";
+import {
+  autocompletePlacesApi,
+  getPlaceDetailsApi,
+} from "../../lib/placeApi";
+import { PlaceSuggestion } from "../../types/place";
 
 type CategoryOption = {
   label: string;
@@ -98,7 +99,12 @@ const categories: CategoryOption[] = [
   },
 ];
 
-const severityOptions: IncidentSeverity[] = ["low", "medium", "high", "critical"];
+const severityOptions: IncidentSeverity[] = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
 
 const areaOptions: { label: string; value: IncidentAreaType }[] = [
   { label: "On campus", value: "on_campus" },
@@ -107,9 +113,12 @@ const areaOptions: { label: string; value: IncidentAreaType }[] = [
 ];
 
 export default function ReportScreen() {
+  const insets = useSafeAreaInsets();
+
   const anonymousReportingDefault = useSafetySettingsStore(
-  (state) => state.anonymousReportingDefault
-);
+    (state) => state.anonymousReportingDefault
+  );
+
   const createReport = useIncidentStore((state) => state.createReport);
 
   const [category, setCategory] = useState<IncidentCategory>("phone_snatch");
@@ -117,13 +126,16 @@ export default function ReportScreen() {
   const [areaType, setAreaType] = useState<IncidentAreaType>("off_campus");
 
   const [locationName, setLocationName] = useState("");
-  const [locationSuggestions, setLocationSuggestions] = useState<PlaceSuggestion[]>([]);
-const [searchingLocation, setSearchingLocation] = useState(false);
-const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
-  latitude: number;
-  longitude: number;
-  accuracy?: number | null;
-} | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<
+    PlaceSuggestion[]
+  >([]);
+  const [searchingLocation, setSearchingLocation] = useState(false);
+  const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy?: number | null;
+  } | null>(null);
+
   const [description, setDescription] = useState("");
   const [attackerMode, setAttackerMode] = useState("");
   const [lightingCondition, setLightingCondition] = useState("");
@@ -135,120 +147,182 @@ const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-  const query = locationName.trim();
+    const query = locationName.trim();
 
-  if (query.length < 2) {
-    setLocationSuggestions([]);
-    return;
-  }
+    if (query.length < 2) {
+      setLocationSuggestions([]);
+      return;
+    }
 
-  if (selectedPlaceLocation) {
-    return;
-  }
+    if (selectedPlaceLocation) {
+      return;
+    }
 
-  const timer = setTimeout(async () => {
+    const timer = setTimeout(async () => {
+      try {
+        setSearchingLocation(true);
+
+        const suggestions = await autocompletePlacesApi(query);
+        setLocationSuggestions(suggestions);
+      } catch (error) {
+        console.log("Location autocomplete failed:", error);
+        setLocationSuggestions([]);
+      } finally {
+        setSearchingLocation(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [locationName, selectedPlaceLocation]);
+
+  const handleLocationNameChange = (value: string) => {
+    setLocationName(value);
+    setSelectedPlaceLocation(null);
+  };
+
+  const handleSelectLocationSuggestion = async (
+    suggestion: PlaceSuggestion
+  ) => {
     try {
       setSearchingLocation(true);
-      const suggestions = await autocompletePlacesApi(query);
-      setLocationSuggestions(suggestions);
-    } catch (error) {
-      console.log("Location autocomplete failed:", error);
       setLocationSuggestions([]);
+      setLocationName(suggestion.description);
+
+      const details = await getPlaceDetailsApi(suggestion.placeId);
+
+      if (details.location) {
+        setSelectedPlaceLocation({
+          latitude: details.location.latitude,
+          longitude: details.location.longitude,
+          accuracy: null,
+        });
+      }
+    } catch (error) {
+      console.log("Place details failed:", error);
+
+      Alert.alert(
+        "Location Error",
+        "SafeWalk AI could not get coordinates for this location."
+      );
     } finally {
       setSearchingLocation(false);
     }
-  }, 500);
+  };
 
-  return () => clearTimeout(timer);
-}, [locationName, selectedPlaceLocation]);
+  const handleUseCurrentLocationForReport = async () => {
+    try {
+      const location = await getCurrentLocation();
+
+      setSelectedPlaceLocation(location);
+      setLocationName("Current GPS location");
+      setLocationSuggestions([]);
+
+      Alert.alert(
+        "Location Captured",
+        "Your current GPS location will be attached to this report."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Location Error",
+        error instanceof Error
+          ? error.message
+          : "Unable to get your current location."
+      );
+    }
+  };
 
   const handleSubmitReport = async () => {
-  if (!description.trim()) {
-    Alert.alert(
-      "Missing Description",
-      "Please briefly describe what happened."
-    );
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    let location = null;
-
-    try {
-      location = await getCurrentLocation();
-    } catch {
-      location = null;
+    if (!description.trim()) {
+      Alert.alert(
+        "Missing Description",
+        "Please briefly describe what happened."
+      );
+      return;
     }
 
-    const reportPayload = {
-      category,
-      description,
-      severity,
-      areaType,
-      location,
-      locationName,
-      victimWasAlone,
-      weaponInvolved,
-      attackerMode,
-      lightingCondition,
-      anonymous,
-    };
-
-    const localReportId = createReport(reportPayload);
-
     try {
-      await createIncidentReportApi(reportPayload);
+      setLoading(true);
 
-      Alert.alert(
-        "Report Saved",
-        "Your incident report has been saved locally and synced to the SafeWalk AI database.",
-        [
-          {
-            text: "View Risk Map",
-            onPress: () => router.push("/(tabs)/risk-map"),
-          },
-          {
-            text: "Done",
-            style: "cancel",
-          },
-        ]
-      );
-    } catch (syncError) {
-      console.log("Backend sync failed:", syncError);
+      let location = selectedPlaceLocation;
 
-      Alert.alert(
-        "Saved Locally",
-        "Your report was saved on this phone, but it could not sync to the backend. Check that your API server is running and your phone is on the same network.",
-        [
-          {
-            text: "View Risk Map",
-            onPress: () => router.push("/(tabs)/risk-map"),
-          },
-          {
-            text: "Done",
-            style: "cancel",
-          },
-        ]
-      );
+      if (!location) {
+        try {
+          location = await getCurrentLocation();
+        } catch {
+          location = null;
+        }
+      }
+
+      const reportPayload = {
+        category,
+        description,
+        severity,
+        areaType,
+        location,
+        locationName,
+        victimWasAlone,
+        weaponInvolved,
+        attackerMode,
+        lightingCondition,
+        anonymous,
+      };
+
+      const localReportId = createReport(reportPayload);
+
+      try {
+        await createIncidentReportApi(reportPayload);
+
+        Alert.alert(
+          "Report Saved",
+          "Your incident report has been saved locally and synced to the SafeWalk AI database.",
+          [
+            {
+              text: "View Risk Map",
+              onPress: () => router.push("/(tabs)/risk-map"),
+            },
+            {
+              text: "Done",
+              style: "cancel",
+            },
+          ]
+        );
+      } catch (syncError) {
+        console.log("Backend sync failed:", syncError);
+
+        Alert.alert(
+          "Saved Locally",
+          "Your report was saved on this phone, but it could not sync to the backend. Check that your API server is running and your phone is on the same network.",
+          [
+            {
+              text: "View Risk Map",
+              onPress: () => router.push("/(tabs)/risk-map"),
+            },
+            {
+              text: "Done",
+              style: "cancel",
+            },
+          ]
+        );
+      }
+
+      console.log("Local incident report created:", localReportId);
+
+      setDescription("");
+      setLocationName("");
+      setSelectedPlaceLocation(null);
+      setLocationSuggestions([]);
+      setAttackerMode("");
+      setLightingCondition("");
+      setSeverity("medium");
+      setCategory("phone_snatch");
+      setAreaType("off_campus");
+      setVictimWasAlone(true);
+      setWeaponInvolved(false);
+      setAnonymous(anonymousReportingDefault);
+    } finally {
+      setLoading(false);
     }
-
-    console.log("Local incident report created:", localReportId);
-
-    setDescription("");
-    setLocationName("");
-    setAttackerMode("");
-    setLightingCondition("");
-    setSeverity("medium");
-    setCategory("phone_snatch");
-    setVictimWasAlone(true);
-    setWeaponInvolved(false);
-    setAnonymous(true);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <Screen scroll>
@@ -258,6 +332,7 @@ const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
         </View>
 
         <Text style={styles.heroTitle}>Report an Incident</Text>
+
         <Text style={styles.heroText}>
           Report safety issues around campus or off-campus areas. Your report
           helps SafeWalk AI warn other students.
@@ -286,7 +361,6 @@ const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
                     selected && styles.selectedIcon,
                   ]}
                 >
-                  
                   {item.icon}
                 </View>
 
@@ -304,42 +378,99 @@ const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
         </View>
       </View>
 
-
       <View style={styles.section}>
         <SectionHeader
           title="Where did it happen?"
-          subtitle="Add a known area name. GPS will also be captured when possible."
+          subtitle="Search the place or use your current GPS location."
         />
 
-        <AppInput
-          label="Location name"
-          placeholder="Example: Ayeduase hostel road"
-          value={locationName}
-          onChangeText={setLocationName}
-          autoCapitalize="words"
-        />
+        <View style={styles.locationCard}>
+          <AppInput
+            label="Location name"
+            placeholder="Search area, hostel, junction, or road"
+            value={locationName}
+            onChangeText={handleLocationNameChange}
+            autoCapitalize="words"
+          />
 
-        <View style={styles.areaRow}>
-          {areaOptions.map((option) => {
-            const selected = option.value === areaType;
+          {searchingLocation ? (
+            <Text style={styles.searchingText}>
+              Searching location suggestions...
+            </Text>
+          ) : null}
 
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => setAreaType(option.value)}
-                style={[styles.areaChip, selected && styles.areaChipSelected]}
-              >
-                <Text
-                  style={[
-                    styles.areaText,
-                    selected && styles.areaTextSelected,
-                  ]}
+          {locationSuggestions.length > 0 ? (
+            <View style={styles.locationSuggestionsCard}>
+              {locationSuggestions.map((suggestion) => (
+                <Pressable
+                  key={suggestion.placeId}
+                  onPress={() => handleSelectLocationSuggestion(suggestion)}
+                  style={styles.locationSuggestionItem}
                 >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <View style={styles.locationSuggestionIcon}>
+                    <MapPin size={18} color={COLORS.primary} />
+                  </View>
+
+                  <View style={styles.locationSuggestionTextBox}>
+                    <Text style={styles.locationSuggestionMain}>
+                      {suggestion.mainText || suggestion.description}
+                    </Text>
+
+                    <Text style={styles.locationSuggestionSecondary}>
+                      {suggestion.secondaryText || suggestion.description}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {selectedPlaceLocation ? (
+            <View style={styles.selectedLocationBox}>
+              <MapPin size={18} color={COLORS.primary} />
+
+              <Text style={styles.selectedLocationText}>
+                Location selected with GPS coordinates.
+              </Text>
+            </View>
+          ) : null}
+
+          <AppButton
+            title="Use My Current Location"
+            onPress={handleUseCurrentLocationForReport}
+            variant="secondary"
+            style={styles.currentLocationButton}
+          />
+
+          <View style={styles.areaSection}>
+            <Text style={styles.areaLabel}>Area type</Text>
+
+            <View style={styles.areaRow}>
+              {areaOptions.map((option) => {
+                const selected = option.value === areaType;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setAreaType(option.value)}
+                    style={[
+                      styles.areaChip,
+                      selected && styles.areaChipSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.areaText,
+                        selected && styles.areaTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
         </View>
       </View>
 
@@ -434,6 +565,7 @@ const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
 
       <View style={styles.infoCard}>
         <MapPin size={22} color={COLORS.primary} />
+
         <Text style={styles.infoText}>
           SafeWalk AI will use this report to build future risk alerts and
           identify unsafe areas. Reports are saved as pending until reviewed.
@@ -447,6 +579,8 @@ const [selectedPlaceLocation, setSelectedPlaceLocation] = useState<{
         disabled={loading}
         style={styles.submitButton}
       />
+
+      <View style={{ height: insets.bottom + 130 }} />
     </Screen>
   );
 }
@@ -556,6 +690,99 @@ const styles = StyleSheet.create({
     color: COLORS.primaryDark,
   },
 
+  locationCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  searchingText: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+  },
+
+  locationSuggestionsCard: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+  },
+
+  locationSuggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+
+  locationSuggestionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  locationSuggestionTextBox: {
+    flex: 1,
+  },
+
+  locationSuggestionMain: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  locationSuggestionSecondary: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "700",
+    color: COLORS.mutedText,
+  },
+
+  selectedLocationBox: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  selectedLocationText: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primaryDark,
+    fontWeight: "800",
+  },
+
+  currentLocationButton: {
+    marginTop: SPACING.md,
+  },
+
+  areaSection: {
+    marginTop: SPACING.lg,
+  },
+
+  areaLabel: {
+    marginBottom: SPACING.sm,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+
   areaRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -563,7 +790,11 @@ const styles = StyleSheet.create({
   },
 
   areaChip: {
-    backgroundColor: COLORS.surface,
+    minWidth: 100,
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surfaceMuted,
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingHorizontal: SPACING.md,

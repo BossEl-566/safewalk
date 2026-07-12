@@ -1,18 +1,44 @@
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { ShieldAlert } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  BellRing,
+  ChevronRight,
+  ContactRound,
+  Footprints,
+  Map,
+  MapPin,
+  RadioTower,
+  ShieldAlert,
+  ShieldCheck,
+  TriangleAlert,
+} from "lucide-react-native";
 
 import { useContactStore } from "../../store/contactStore";
 import { useSOSStore } from "../../store/sosStore";
 import { getCurrentLocation } from "../../lib/location";
 import { Screen } from "../../components/Screen";
-import { SafetyCard } from "../../components/SafetyCard";
 import { SectionHeader } from "../../components/SectionHeader";
-import { COLORS, FONT_SIZE, RADIUS, SHADOWS, SPACING } from "../../constants/theme";
+import {
+  COLORS,
+  FONT_SIZE,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from "../../constants/theme";
 import { createSOSAlertApi } from "../../lib/sosApi";
 
 type SOSCircleButtonProps = {
   onPress: () => void;
+};
+
+type SafetyToolCardProps = {
+  title: string;
+  description: string;
+  badge?: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  variant?: "primary" | "danger" | "warning" | "info";
 };
 
 function SOSCircleButton({ onPress }: SOSCircleButtonProps) {
@@ -35,7 +61,68 @@ function SOSCircleButton({ onPress }: SOSCircleButtonProps) {
   );
 }
 
+function SafetyToolCard({
+  title,
+  description,
+  badge,
+  icon,
+  onPress,
+  variant = "primary",
+}: SafetyToolCardProps) {
+  const color =
+    variant === "danger"
+      ? COLORS.danger
+      : variant === "warning"
+        ? COLORS.warning
+        : variant === "info"
+          ? COLORS.info
+          : COLORS.primary;
+
+  const lightColor =
+    variant === "danger"
+      ? COLORS.dangerLight
+      : variant === "warning"
+        ? COLORS.warningLight
+        : variant === "info"
+          ? COLORS.infoLight
+          : COLORS.primaryLight;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.toolCard,
+        pressed && styles.toolCardPressed,
+      ]}
+    >
+      <View style={[styles.toolIconBox, { backgroundColor: lightColor }]}>
+        {icon}
+      </View>
+
+      <View style={styles.toolContent}>
+        <View style={styles.toolTitleRow}>
+          <Text style={styles.toolTitle}>{title}</Text>
+
+          {badge ? (
+            <View style={[styles.toolBadge, { backgroundColor: lightColor }]}>
+              <Text style={[styles.toolBadgeText, { color }]}>{badge}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <Text style={styles.toolDescription}>{description}</Text>
+      </View>
+
+      <View style={styles.toolArrow}>
+        <ChevronRight size={18} color={COLORS.mutedText} />
+      </View>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
+
   const contacts = useContactStore((state) => state.contacts);
   const createSOSAlert = useSOSStore((state) => state.createSOSAlert);
 
@@ -96,7 +183,8 @@ export default function HomeScreen() {
   return (
     <Screen scroll>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerTextBox}>
+          <Text style={styles.greeting}>Welcome back</Text>
           <Text style={styles.appName}>SafeWalk AI</Text>
           <Text style={styles.tagline}>
             Walk safer. Alert faster. Stay protected.
@@ -104,11 +192,19 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.statusPill}>
+          <ShieldCheck size={14} color={COLORS.primaryDark} />
           <Text style={styles.statusText}>Protected</Text>
         </View>
       </View>
 
       <View style={styles.heroCard}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroLabelBox}>
+            <RadioTower size={17} color={COLORS.danger} />
+            <Text style={styles.heroLabel}>Emergency Ready</Text>
+          </View>
+        </View>
+
         <Text style={styles.heroTitle}>Need help fast?</Text>
         <Text style={styles.heroText}>
           Send your live location to trusted contacts during danger or emergency.
@@ -116,9 +212,30 @@ export default function HomeScreen() {
 
         <SOSCircleButton onPress={handleSOSPress} />
 
-        <Text style={styles.sosHint}>
-          Your location will be sent to your trusted contact immediately.
-        </Text>
+        <View style={styles.sosInfoStrip}>
+          <MapPin size={17} color={COLORS.danger} />
+          <Text style={styles.sosHint}>
+            Your current location will be sent to your trusted contact immediately.
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.quickStatusRow}>
+        <View style={styles.quickStatusCard}>
+          <View style={styles.quickStatusIcon}>
+            <ContactRound size={20} color={COLORS.primary} />
+          </View>
+          <Text style={styles.quickStatusValue}>{contacts.length}</Text>
+          <Text style={styles.quickStatusLabel}>Trusted contacts</Text>
+        </View>
+
+        <View style={styles.quickStatusCard}>
+          <View style={styles.quickStatusIcon}>
+            <BellRing size={20} color={COLORS.warning} />
+          </View>
+          <Text style={styles.quickStatusValue}>Live</Text>
+          <Text style={styles.quickStatusLabel}>Safety alerts</Text>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -127,49 +244,58 @@ export default function HomeScreen() {
           subtitle="Use these tools before, during, or after a safety incident."
         />
 
-        <View style={styles.grid}>
-          <SafetyCard
+        <View style={styles.toolsList}>
+          <SafetyToolCard
             title="Walk Safe"
-            description="Start a monitored walk to your hostel or destination."
-            icon="🚶"
+            description="Start a monitored walk to your hostel, lecture hall, or destination."
             badge="Live"
+            variant="primary"
+            icon={<Footprints size={23} color={COLORS.primary} />}
             onPress={() => router.push("/(tabs)/walk-safe")}
-            style={styles.gridCard}
           />
 
-          <SafetyCard
+          <SafetyToolCard
             title="Risk Map"
-            description="View unsafe areas based on student reports."
-            icon="📍"
+            description="View unsafe areas based on student reports and danger patterns."
             badge="AI"
+            variant="info"
+            icon={<Map size={23} color={COLORS.info} />}
             onPress={() => router.push("/(tabs)/risk-map")}
-            style={styles.gridCard}
           />
 
-          <SafetyCard
-            title="Report"
-            description="Report phone snatching, robbery, or suspicious activity."
-            icon="⚠️"
+          <SafetyToolCard
+            title="Report Incident"
+            description="Report robbery, phone snatching, harassment, or suspicious activity."
+            variant="danger"
+            icon={<TriangleAlert size={23} color={COLORS.danger} />}
             onPress={() => router.push("/(tabs)/report")}
-            style={styles.gridCard}
           />
 
-          <SafetyCard
-            title="Contacts"
-            description="Manage people who receive emergency alerts."
-            icon="👥"
+          <SafetyToolCard
+            title="Emergency Contacts"
+            description="Manage the people who receive your emergency and live-share alerts."
+            variant="warning"
+            icon={<ContactRound size={23} color={COLORS.warning} />}
             onPress={() => router.push("/contacts")}
-            style={styles.gridCard}
           />
         </View>
       </View>
 
       <View style={styles.warningCard}>
-        <Text style={styles.warningTitle}>Tonight’s safety reminder</Text>
-        <Text style={styles.warningText}>
-          Avoid quiet routes when walking alone. Start Walk Safe mode before leaving campus or your hostel.
-        </Text>
+        <View style={styles.warningIconBox}>
+          <TriangleAlert size={22} color={COLORS.warningDark} />
+        </View>
+
+        <View style={styles.warningTextBox}>
+          <Text style={styles.warningTitle}>Tonight’s safety reminder</Text>
+          <Text style={styles.warningText}>
+            Avoid quiet routes when walking alone. Start Walk Safe mode before
+            leaving campus or your hostel.
+          </Text>
+        </View>
       </View>
+
+      <View style={{ height: insets.bottom + 130 }} />
     </Screen>
   );
 }
@@ -179,10 +305,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
+    gap: SPACING.md,
     marginBottom: SPACING.xl,
   },
 
+  headerTextBox: {
+    flex: 1,
+  },
+
+  greeting: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+
   appName: {
+    marginTop: 3,
     fontSize: FONT_SIZE.xl,
     fontWeight: "900",
     color: COLORS.text,
@@ -192,6 +332,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: FONT_SIZE.sm,
     color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 20,
   },
 
   statusPill: {
@@ -199,6 +341,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
 
   statusText: {
@@ -209,7 +354,7 @@ const styles = StyleSheet.create({
 
   heroCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
+    borderRadius: 34,
     padding: SPACING.xl,
     alignItems: "center",
     borderWidth: 1,
@@ -217,10 +362,34 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
+  heroTopRow: {
+    width: "100%",
+    alignItems: "center",
+    marginBottom: SPACING.md,
+  },
+
+  heroLabelBox: {
+    backgroundColor: COLORS.dangerLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+
+  heroLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.danger,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+
   heroTitle: {
-    fontSize: FONT_SIZE.lg,
+    fontSize: FONT_SIZE.xl,
     fontWeight: "900",
     color: COLORS.text,
+    textAlign: "center",
   },
 
   heroText: {
@@ -229,6 +398,7 @@ const styles = StyleSheet.create({
     color: COLORS.mutedText,
     textAlign: "center",
     lineHeight: 21,
+    fontWeight: "700",
   },
 
   sosCircleOuter: {
@@ -288,27 +458,141 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  sosHint: {
+  sosInfoStrip: {
     marginTop: SPACING.lg,
+    backgroundColor: COLORS.dangerLight,
+    borderRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  sosHint: {
+    flex: 1,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.dangerDark,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+
+  quickStatusRow: {
+    marginTop: SPACING.lg,
+    flexDirection: "row",
+    gap: SPACING.md,
+  },
+
+  quickStatusCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  quickStatusIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.sm,
+  },
+
+  quickStatusValue: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  quickStatusLabel: {
+    marginTop: 2,
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
-    textAlign: "center",
-    fontWeight: "700",
-    lineHeight: 18,
+    fontWeight: "800",
   },
 
   section: {
     marginTop: SPACING.xl,
   },
 
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  toolsList: {
     gap: SPACING.md,
   },
 
-  gridCard: {
-    width: "47%",
+  toolCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    ...SHADOWS.soft,
+  },
+
+  toolCardPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.92,
+  },
+
+  toolIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  toolContent: {
+    flex: 1,
+  },
+
+  toolTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  toolTitle: {
+    flex: 1,
+    fontSize: FONT_SIZE.md,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  toolBadge: {
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+
+  toolBadgeText: {
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+
+  toolDescription: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+
+  toolArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   warningCard: {
@@ -318,6 +602,22 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: "#FDE68A",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+  },
+
+  warningIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  warningTextBox: {
+    flex: 1,
   },
 
   warningTitle: {
@@ -330,6 +630,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
     fontSize: FONT_SIZE.sm,
     color: COLORS.warningDark,
+    fontWeight: "700",
     lineHeight: 20,
   },
 });

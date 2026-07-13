@@ -207,7 +207,7 @@ export default function HomeScreen() {
 
         <Text style={styles.heroTitle}>Need help fast?</Text>
         <Text style={styles.heroText}>
-          Send your live location to trusted contacts during danger or emergency.
+          Send your live location to trusted contacts during danger or emergency
         </Text>
 
         <SOSCircleButton onPress={handleSOSPress} />

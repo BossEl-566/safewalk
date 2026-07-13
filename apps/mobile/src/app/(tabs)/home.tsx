@@ -203,7 +203,7 @@ export default function HomeScreen() {
             <RadioTower size={17} color={COLORS.danger} />
             <Text style={styles.heroLabel}>Emergency Ready</Text>
           </View>
-        </View>
+        </View> 
 
         <Text style={styles.heroTitle}>Need help fast?</Text>
         <Text style={styles.heroText}>

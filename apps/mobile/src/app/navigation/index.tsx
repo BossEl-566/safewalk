@@ -65,6 +65,18 @@ import {
 import { PlaceSuggestion } from "../../types/place";
 import { LocationRiskResult } from "../../types/risk";
 
+import {
+  speakDangerZone,
+  speakDestinationSelected,
+  speakOffRouteWarning,
+  speakRerouteReady,
+  speakRouteReady,
+  speakSafeCheckIn,
+  speakSOSEscalated,
+  speakWalkHomeStarted,
+  stopSafeWalkVoice,
+} from "../../lib/voiceAssistant";
+
 type Region = {
   latitude: number;
   longitude: number;
@@ -347,6 +359,7 @@ ${shareSession.shareToken}`;
     try {
       const updated = await checkInLiveShareSessionApi(activeShare.shareToken);
       setActiveShare(updated);
+      speakSafeCheckIn();
 
       Alert.alert("Check-in Sent", "Your friend can now see that you are safe.");
     } catch (error) {
@@ -475,6 +488,7 @@ ${shareSession.shareToken}`;
       }
 
       setDestination(details.location);
+      speakDestinationSelected(suggestion.description);
 
       mapRef.current?.animateToRegion({
         latitude: details.location.latitude,
@@ -532,6 +546,12 @@ ${shareSession.shareToken}`;
       setRouteDecision(result.decisionExplanation ?? null);
       checkCurrentAreaRisk(currentLocation);
 
+      speakRouteReady(
+  recommended.riskLevel,
+  formatDistance(recommended.distanceMeters),
+  formatGoogleDuration(recommended.duration)
+);
+
       focusMapOnPoints([
         currentLocation,
         destination,
@@ -583,6 +603,7 @@ ${shareSession.shareToken}`;
       setOffRouteWarningShown(false);
       setRouteDecision(result.decisionExplanation ?? null);
       setRerouteCount((count) => count + 1);
+      speakRerouteReady();
 
       focusMapOnPoints([currentLocation, destination, ...newRoute.coordinates]);
 
@@ -621,6 +642,7 @@ ${shareSession.shareToken}`;
 
       if (nearest.nearestDistance > 80 && !offRouteWarningShown) {
         setOffRouteWarningShown(true);
+        speakOffRouteWarning();
 
         Alert.alert(
           "Route Warning",
@@ -666,6 +688,7 @@ ${shareSession.shareToken}`;
       setEscalatingSOS(true);
 
       await escalateLiveShareToSOSApi(activeShare.shareToken, reason);
+      speakSOSEscalated();
 
       Alert.alert(
         "SOS Escalated",
@@ -760,6 +783,8 @@ ${shareSession.shareToken}`;
 
           const warningMessage =
             risk.warnings[0] || "A risky area was detected nearby.";
+
+          speakDangerZone(risk.riskLevel, warningMessage);
 
           Alert.alert(
             "Danger Area Warning",
@@ -884,6 +909,7 @@ ${shareSession.shareToken}`;
 
       setIsTracking(true);
       startPeriodicCheckIns();
+      speakWalkHomeStarted();
 
       const subscription = await Location.watchPositionAsync(
         {
@@ -1063,6 +1089,7 @@ ${shareSession.shareToken}`;
   };
 
   const handleStopTracking = async () => {
+    stopSafeWalkVoice();
     clearCheckInTimers();
     closeCheckInModal();
     stopDemoWalk();

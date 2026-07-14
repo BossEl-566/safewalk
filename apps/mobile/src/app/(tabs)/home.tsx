@@ -251,18 +251,6 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.statusRow}>
-            <View style={styles.statusPill}>
-              <ShieldCheck size={14} color={COLORS.primaryDark} />
-              <Text style={styles.statusText}>Protected</Text>
-            </View>
-
-            <View style={styles.statusPillWhite}>
-              <RadioTower size={14} color={COLORS.primary} />
-              <Text style={styles.statusTextGreen}>Emergency Ready</Text>
-            </View>
-          </View>
-
           <View style={styles.searchCard}>
             <View style={styles.avatar}>
               <ShieldCheck size={20} color={COLORS.primary} />
@@ -441,7 +429,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   appShell: {
-    marginHorizontal: -SPACING.lg,
+    marginHorizontal: -SPACING.xxl,
     marginTop: -SPACING.lg,
   },
 
@@ -450,8 +438,8 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.xl,
     paddingHorizontal: SPACING.lg,
     paddingBottom: 72,
-    borderBottomLeftRadius: 34,
-    borderBottomRightRadius: 34,
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
   },
 
   topNav: {

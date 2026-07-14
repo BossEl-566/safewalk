@@ -1,24 +1,29 @@
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BellRing,
+  ChartNoAxesColumnIncreasing,
   ChevronRight,
+  CirclePlus,
   ContactRound,
   Footprints,
   Map,
   MapPin,
+  Menu,
   RadioTower,
   ShieldAlert,
   ShieldCheck,
   TriangleAlert,
+  UsersRound,
 } from "lucide-react-native";
+
+import SafeWalkLogo from "../../assets/safewalk-ai-logo.png";
 
 import { useContactStore } from "../../store/contactStore";
 import { useSOSStore } from "../../store/sosStore";
 import { getCurrentLocation } from "../../lib/location";
 import { Screen } from "../../components/Screen";
-import { SectionHeader } from "../../components/SectionHeader";
 import {
   COLORS,
   FONT_SIZE,
@@ -36,6 +41,13 @@ type SafetyToolCardProps = {
   title: string;
   description: string;
   badge?: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  variant?: "primary" | "danger" | "warning" | "info";
+};
+
+type QuickActionProps = {
+  title: string;
   icon: React.ReactNode;
   onPress: () => void;
   variant?: "primary" | "danger" | "warning" | "info";
@@ -61,6 +73,59 @@ function SOSCircleButton({ onPress }: SOSCircleButtonProps) {
   );
 }
 
+function getVariantColor(variant: SafetyToolCardProps["variant"]) {
+  if (variant === "danger") {
+    return {
+      color: COLORS.danger,
+      lightColor: COLORS.dangerLight,
+    };
+  }
+
+  if (variant === "warning") {
+    return {
+      color: COLORS.warning,
+      lightColor: COLORS.warningLight,
+    };
+  }
+
+  if (variant === "info") {
+    return {
+      color: COLORS.info,
+      lightColor: COLORS.infoLight,
+    };
+  }
+
+  return {
+    color: COLORS.primary,
+    lightColor: COLORS.primaryLight,
+  };
+}
+
+function QuickAction({
+  title,
+  icon,
+  onPress,
+  variant = "primary",
+}: QuickActionProps) {
+  const { color, lightColor } = getVariantColor(variant);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.quickAction,
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <View style={[styles.quickActionIcon, { backgroundColor: lightColor }]}>
+        {icon}
+      </View>
+
+      <Text style={[styles.quickActionText, { color }]}>{title}</Text>
+    </Pressable>
+  );
+}
+
 function SafetyToolCard({
   title,
   description,
@@ -69,30 +134,14 @@ function SafetyToolCard({
   onPress,
   variant = "primary",
 }: SafetyToolCardProps) {
-  const color =
-    variant === "danger"
-      ? COLORS.danger
-      : variant === "warning"
-        ? COLORS.warning
-        : variant === "info"
-          ? COLORS.info
-          : COLORS.primary;
-
-  const lightColor =
-    variant === "danger"
-      ? COLORS.dangerLight
-      : variant === "warning"
-        ? COLORS.warningLight
-        : variant === "info"
-          ? COLORS.infoLight
-          : COLORS.primaryLight;
+  const { color, lightColor } = getVariantColor(variant);
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.toolCard,
-        pressed && styles.toolCardPressed,
+        pressed && styles.cardPressed,
       ]}
     >
       <View style={[styles.toolIconBox, { backgroundColor: lightColor }]}>
@@ -182,67 +231,157 @@ export default function HomeScreen() {
 
   return (
     <Screen scroll>
-      <View style={styles.header}>
-        <View style={styles.headerTextBox}>
-          <Text style={styles.greeting}>Welcome back</Text>
-          <Text style={styles.appName}>SafeWalk AI</Text>
-          <Text style={styles.tagline}>
-            Walk safer. Alert faster. Stay protected.
+      <View style={styles.appShell}>
+        <View style={styles.greenHeader}>
+          <View style={styles.topNav}>
+            <Pressable style={styles.headerIconButton}>
+              <Menu size={25} color={COLORS.white} />
+            </Pressable>
+
+            <Image
+              source={SafeWalkLogo}
+              resizeMode="contain"
+              style={styles.logo}
+            />
+
+            <Pressable style={styles.bellButton}>
+              <BellRing size={22} color={COLORS.white} />
+
+              <View style={styles.notificationDot} />
+            </Pressable>
+          </View>
+
+          <View style={styles.statusRow}>
+            <View style={styles.statusPill}>
+              <ShieldCheck size={14} color={COLORS.primaryDark} />
+              <Text style={styles.statusText}>Protected</Text>
+            </View>
+
+            <View style={styles.statusPillWhite}>
+              <RadioTower size={14} color={COLORS.primary} />
+              <Text style={styles.statusTextGreen}>Emergency Ready</Text>
+            </View>
+          </View>
+
+          <View style={styles.searchCard}>
+            <View style={styles.avatar}>
+              <ShieldCheck size={20} color={COLORS.primary} />
+            </View>
+
+            <Text style={styles.searchText}>What is your walk today?</Text>
+
+            <MapPin size={22} color={COLORS.mutedText} />
+
+            <Pressable
+              onPress={() => router.push("/(tabs)/report")}
+              style={styles.plusButton}
+            >
+              <CirclePlus size={24} color={COLORS.white} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.quickActionsCard}>
+          <QuickAction
+            title="Check In"
+            variant="primary"
+            icon={<ShieldCheck size={19} color={COLORS.primary} />}
+            onPress={() => router.push("/navigation")}
+          />
+
+          <View style={styles.quickDivider} />
+
+          <QuickAction
+            title="My Circle"
+            variant="primary"
+            icon={<UsersRound size={19} color={COLORS.primary} />}
+            onPress={() => router.push("/contacts")}
+          />
+
+          <View style={styles.quickDivider} />
+
+          <QuickAction
+            title="Report"
+            variant="danger"
+            icon={<TriangleAlert size={19} color={COLORS.danger} />}
+            onPress={() => router.push("/(tabs)/report")}
+          />
+
+          <View style={styles.quickDivider} />
+
+          <QuickAction
+            title="Insights"
+            variant="info"
+            icon={<ChartNoAxesColumnIncreasing size={19} color={COLORS.info} />}
+            onPress={() => router.push("/(tabs)/risk-map")}
+          />
+        </View>
+
+        <View style={styles.emergencyPostCard}>
+          <View style={styles.postHeader}>
+            <View style={styles.postAvatar}>
+              <ShieldAlert size={24} color={COLORS.danger} />
+            </View>
+
+            <View style={styles.postHeaderText}>
+              <Text style={styles.postName}>Emergency Assistance</Text>
+              <Text style={styles.postMeta}>Live location alert • Ready now</Text>
+            </View>
+
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>Live</Text>
+            </View>
+          </View>
+
+          <Text style={styles.postText}>
+            If you feel unsafe, press SOS. SafeWalk AI will capture your current
+            GPS location and notify your trusted contact immediately.
+          </Text>
+
+          <View style={styles.sosDisplayCard}>
+            <View style={styles.sosTopLabel}>
+              <ShieldAlert size={17} color={COLORS.danger} />
+              <Text style={styles.sosTopLabelText}>Emergency SOS</Text>
+            </View>
+
+            <SOSCircleButton onPress={handleSOSPress} />
+
+            <View style={styles.sosInfoStrip}>
+              <MapPin size={17} color={COLORS.danger} />
+              <Text style={styles.sosHint}>
+                Your current location will be sent to your trusted contact.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.quickStatusRow}>
+          <View style={styles.quickStatusCard}>
+            <View style={styles.quickStatusIcon}>
+              <ContactRound size={20} color={COLORS.primary} />
+            </View>
+
+            <Text style={styles.quickStatusValue}>{contacts.length}</Text>
+            <Text style={styles.quickStatusLabel}>Trusted contacts</Text>
+          </View>
+
+          <View style={styles.quickStatusCard}>
+            <View style={styles.quickStatusIconWarning}>
+              <BellRing size={20} color={COLORS.warning} />
+            </View>
+
+            <Text style={styles.quickStatusValue}>Live</Text>
+            <Text style={styles.quickStatusLabel}>Safety alerts</Text>
+          </View>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Safety tools</Text>
+          <Text style={styles.sectionSubtitle}>
+            Use these tools before, during, or after a safety incident.
           </Text>
         </View>
-
-        <View style={styles.statusPill}>
-          <ShieldCheck size={14} color={COLORS.primaryDark} />
-          <Text style={styles.statusText}>Protected</Text>
-        </View>
-      </View>
-
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <View style={styles.heroLabelBox}>
-            <RadioTower size={17} color={COLORS.danger} />
-            <Text style={styles.heroLabel}>Emergency Ready</Text>
-          </View>
-        </View> 
-
-        <Text style={styles.heroTitle}>Need help fast?</Text>
-        <Text style={styles.heroText}>
-          Send your live location to trusted contacts during danger or emergency
-        </Text>
-
-        <SOSCircleButton onPress={handleSOSPress} />
-
-        <View style={styles.sosInfoStrip}>
-          <MapPin size={17} color={COLORS.danger} />
-          <Text style={styles.sosHint}>
-            Your current location will be sent to your trusted contact immediately.
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.quickStatusRow}>
-        <View style={styles.quickStatusCard}>
-          <View style={styles.quickStatusIcon}>
-            <ContactRound size={20} color={COLORS.primary} />
-          </View>
-          <Text style={styles.quickStatusValue}>{contacts.length}</Text>
-          <Text style={styles.quickStatusLabel}>Trusted contacts</Text>
-        </View>
-
-        <View style={styles.quickStatusCard}>
-          <View style={styles.quickStatusIcon}>
-            <BellRing size={20} color={COLORS.warning} />
-          </View>
-          <Text style={styles.quickStatusValue}>Live</Text>
-          <Text style={styles.quickStatusLabel}>Safety alerts</Text>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <SectionHeader
-          title="Safety tools"
-          subtitle="Use these tools before, during, or after a safety incident."
-        />
 
         <View style={styles.toolsList}>
           <SafetyToolCard
@@ -279,19 +418,19 @@ export default function HomeScreen() {
             onPress={() => router.push("/contacts")}
           />
         </View>
-      </View>
 
-      <View style={styles.warningCard}>
-        <View style={styles.warningIconBox}>
-          <TriangleAlert size={22} color={COLORS.warningDark} />
-        </View>
+        <View style={styles.warningCard}>
+          <View style={styles.warningIconBox}>
+            <TriangleAlert size={22} color={COLORS.warningDark} />
+          </View>
 
-        <View style={styles.warningTextBox}>
-          <Text style={styles.warningTitle}>Tonight’s safety reminder</Text>
-          <Text style={styles.warningText}>
-            Avoid quiet routes when walking alone. Start Walk Safe mode before
-            leaving campus or your hostel.
-          </Text>
+          <View style={styles.warningTextBox}>
+            <Text style={styles.warningTitle}>Tonight’s safety reminder</Text>
+            <Text style={styles.warningText}>
+              Avoid quiet routes when walking alone. Start Walk Safe mode before
+              leaving campus or your hostel.
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -301,39 +440,65 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
+  appShell: {
+    marginHorizontal: -SPACING.lg,
+    marginTop: -SPACING.lg,
+  },
+
+  greenHeader: {
+    backgroundColor: COLORS.primary,
+    paddingTop: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: 72,
+    borderBottomLeftRadius: 34,
+    borderBottomRightRadius: 34,
+  },
+
+  topNav: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
   },
 
-  headerTextBox: {
-    flex: 1,
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  greeting: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
+  logo: {
+    width: 190,
+    height: 54,
   },
 
-  appName: {
-    marginTop: 3,
-    fontSize: FONT_SIZE.xl,
-    fontWeight: "900",
-    color: COLORS.text,
+  bellButton: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
 
-  tagline: {
-    marginTop: 4,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-    lineHeight: 20,
+  notificationDot: {
+    position: "absolute",
+    top: 8,
+    right: 9,
+    width: 9,
+    height: 9,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.danger,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+
+  statusRow: {
+    marginTop: SPACING.lg,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
   },
 
   statusPill: {
@@ -352,23 +517,191 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  heroCard: {
+  statusPillWhite: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  statusTextGreen: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+  },
+
+  searchCard: {
+    position: "absolute",
+    left: SPACING.lg,
+    right: SPACING.lg,
+    bottom: -34,
+    minHeight: 74,
     backgroundColor: COLORS.surface,
     borderRadius: 34,
-    padding: SPACING.xl,
+    paddingHorizontal: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.card,
+  },
+
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  searchText: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "800",
+    color: COLORS.mutedText,
+  },
+
+  plusButton: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    ...SHADOWS.soft,
+  },
+
+  quickActionsCard: {
+    marginTop: 52,
+    marginHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOWS.soft,
   },
 
-  heroTopRow: {
-    width: "100%",
+  quickAction: {
+    flex: 1,
     alignItems: "center",
-    marginBottom: SPACING.md,
+    justifyContent: "center",
+    gap: 6,
   },
 
-  heroLabelBox: {
+  quickActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  quickActionText: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  quickDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: COLORS.border,
+  },
+
+  emergencyPostCard: {
+    marginTop: SPACING.lg,
+    marginHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: 28,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  postHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  postAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.dangerLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  postHeaderText: {
+    flex: 1,
+  },
+
+  postName: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  postMeta: {
+    marginTop: 3,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "700",
+    color: COLORS.mutedText,
+  },
+
+  liveBadge: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+  },
+
+  liveText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: COLORS.primaryDark,
+    textTransform: "uppercase",
+  },
+
+  postText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+
+  sosDisplayCard: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.background,
+    borderRadius: 30,
+    padding: SPACING.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  sosTopLabel: {
     backgroundColor: COLORS.dangerLight,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
@@ -378,34 +711,18 @@ const styles = StyleSheet.create({
     gap: 7,
   },
 
-  heroLabel: {
-    fontSize: FONT_SIZE.xs,
+  sosTopLabelText: {
     color: COLORS.danger,
+    fontSize: FONT_SIZE.xs,
     fontWeight: "900",
     textTransform: "uppercase",
   },
 
-  heroTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: "900",
-    color: COLORS.text,
-    textAlign: "center",
-  },
-
-  heroText: {
-    marginTop: SPACING.sm,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.mutedText,
-    textAlign: "center",
-    lineHeight: 21,
-    fontWeight: "700",
-  },
-
   sosCircleOuter: {
-    marginTop: SPACING.xxl,
-    width: 290,
-    height: 290,
-    borderRadius: 145,
+    marginTop: SPACING.xl,
+    width: 270,
+    height: 270,
+    borderRadius: 135,
     backgroundColor: "rgba(220, 38, 38, 0.07)",
     alignItems: "center",
     justifyContent: "center",
@@ -414,9 +731,9 @@ const styles = StyleSheet.create({
   },
 
   sosCircleMiddle: {
-    width: 205,
-    height: 205,
-    borderRadius: 103,
+    width: 196,
+    height: 196,
+    borderRadius: 98,
     backgroundColor: "rgba(220, 38, 38, 0.14)",
     alignItems: "center",
     justifyContent: "center",
@@ -425,9 +742,9 @@ const styles = StyleSheet.create({
   },
 
   sosCircleButton: {
-    width: 138,
-    height: 138,
-    borderRadius: 80,
+    width: 132,
+    height: 132,
+    borderRadius: 66,
     backgroundColor: COLORS.danger,
     alignItems: "center",
     justifyContent: "center",
@@ -479,6 +796,7 @@ const styles = StyleSheet.create({
 
   quickStatusRow: {
     marginTop: SPACING.lg,
+    marginHorizontal: SPACING.lg,
     flexDirection: "row",
     gap: SPACING.md,
   },
@@ -497,7 +815,17 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.sm,
+  },
+
+  quickStatusIconWarning: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.warningLight,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: SPACING.sm,
@@ -516,11 +844,28 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  section: {
+  sectionHeader: {
     marginTop: SPACING.xl,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+
+  sectionTitle: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  sectionSubtitle: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 20,
   },
 
   toolsList: {
+    marginHorizontal: SPACING.lg,
     gap: SPACING.md,
   },
 
@@ -536,7 +881,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
-  toolCardPressed: {
+  cardPressed: {
     transform: [{ scale: 0.985 }],
     opacity: 0.92,
   },
@@ -597,6 +942,7 @@ const styles = StyleSheet.create({
 
   warningCard: {
     marginTop: SPACING.xl,
+    marginHorizontal: SPACING.lg,
     backgroundColor: COLORS.warningLight,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,

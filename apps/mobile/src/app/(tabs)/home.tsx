@@ -1,4 +1,5 @@
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import * as SMS from "expo-sms";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -32,6 +33,7 @@ import {
   SPACING,
 } from "../../constants/theme";
 import { createSOSAlertApi } from "../../lib/sosApi";
+
 
 type SOSCircleButtonProps = {
   onPress: () => void;
@@ -169,6 +171,31 @@ function SafetyToolCard({
   );
 }
 
+function buildSOSMessage({
+  userName,
+  latitude,
+  longitude,
+}: {
+  userName: string;
+  latitude: number;
+  longitude: number;
+}) {
+  const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+  return `EMERGENCY SOS from SafeWalk AI
+
+${userName} may be in danger and needs urgent help.
+
+Current location:
+${mapLink}
+
+Coordinates:
+Latitude: ${latitude}
+Longitude: ${longitude}
+
+Please call or check on them immediately.`;
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
@@ -176,58 +203,114 @@ export default function HomeScreen() {
   const createSOSAlert = useSOSStore((state) => state.createSOSAlert);
 
   const handleSOSPress = async () => {
-    if (contacts.length === 0) {
-      Alert.alert(
-        "No Emergency Contacts",
-        "Add at least one trusted contact before using SOS.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Add Contact",
-            onPress: () => router.push("/contacts"),
-          },
-        ]
-      );
+  if (contacts.length === 0) {
+    Alert.alert(
+      "No Emergency Contacts",
+      "Add at least one trusted contact before using SOS.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Add Contact",
+          onPress: () => router.push("/contacts"),
+        },
+      ]
+    );
 
+    return;
+  }
+
+  try {
+    const smsAvailable = await SMS.isAvailableAsync();
+
+    if (!smsAvailable) {
+      Alert.alert(
+        "SMS Not Available",
+        "This device cannot send SMS messages. Try testing on a real phone with a SIM card."
+      );
       return;
     }
 
-    try {
-      const location = await getCurrentLocation();
+    const location = await getCurrentLocation();
 
-      const alertId = createSOSAlert({
-        userName: "SafeWalk User",
-        location,
-      });
+    const latitude = location.latitude;
+    const longitude = location.longitude;
 
-      const alert = useSOSStore.getState().getAlertById(alertId);
+    const trustedPhones = contacts
+      .map((contact) => contact.phone)
+      .filter((phone) => phone && phone.trim().length > 0);
 
-      if (alert) {
-        createSOSAlertApi({
-          userName: alert.userName,
-          location: alert.location,
-          message: alert.message,
-          source: "sos_button",
-          trustedContactName: contacts[0]?.name ?? "",
-          trustedContactPhone: contacts[0]?.phone ?? "",
-        }).catch((error) => {
-          console.log("SOS backend sync failed:", error);
-        });
-      }
-
-      router.push({
-        pathname: "/sos/active",
-        params: { alertId },
-      });
-    } catch (error) {
+    if (trustedPhones.length === 0) {
       Alert.alert(
-        "Location Error",
-        error instanceof Error
-          ? error.message
-          : "Unable to get your current location."
+        "No Phone Number",
+        "Your trusted contact does not have a valid phone number."
+      );
+      return;
+    }
+
+    const sosMessage = buildSOSMessage({
+      userName: "SafeWalk User",
+      latitude,
+      longitude,
+    });
+
+    const alertId = createSOSAlert({
+      userName: "SafeWalk User",
+      location,
+    });
+
+    const alert = useSOSStore.getState().getAlertById(alertId);
+
+    if (alert) {
+      createSOSAlertApi({
+        userName: alert.userName,
+        location: alert.location,
+        message: sosMessage,
+        source: "sos_button",
+        trustedContactName: contacts[0]?.name ?? "",
+        trustedContactPhone: contacts[0]?.phone ?? "",
+      }).catch((error) => {
+        console.log("SOS backend sync failed:", error);
+      });
+    }
+
+    const smsResult = await SMS.sendSMSAsync(trustedPhones, sosMessage);
+
+    if (smsResult.result === "sent") {
+      Alert.alert(
+        "SOS Message Sent",
+        `Emergency SMS was sent to ${trustedPhones.length} trusted contact${
+          trustedPhones.length === 1 ? "" : "s"
+        }.`
+      );
+    } else if (smsResult.result === "cancelled") {
+      Alert.alert(
+        "SOS Message Cancelled",
+        "The SMS screen was opened, but the message was not sent."
+      );
+    } else {
+      Alert.alert(
+        "SMS Status Unknown",
+        "The SMS app was opened, but SafeWalk AI could not confirm whether the message was sent."
       );
     }
-  };
+
+    router.push({
+      pathname: "/sos/active",
+      params: {
+        alertId,
+        smsStatus: smsResult.result,
+        sentTo: trustedPhones.join(", "),
+      },
+    });
+  } catch (error) {
+    Alert.alert(
+      "SOS Error",
+      error instanceof Error
+        ? error.message
+        : "Unable to send SOS message."
+    );
+  }
+};
 
   return (
     <Screen scroll>

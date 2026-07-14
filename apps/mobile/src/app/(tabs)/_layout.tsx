@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -110,47 +110,55 @@ function CustomTabBar({ state, navigation }: any) {
 
 export default function TabsLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: "Home",
-        }}
+    <>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={COLORS.primary}
+        translucent={false}
       />
 
-      <Tabs.Screen
-        name="walk-safe"
-        options={{
-          title: "Walk",
+      <Tabs
+        tabBar={(props) => <CustomTabBar {...props} />}
+        screenOptions={{
+          headerShown: false,
         }}
-      />
+      >
+        <Tabs.Screen
+          name="home"
+          options={{
+            title: "Home",
+          }}
+        />
 
-      <Tabs.Screen
-        name="report"
-        options={{
-          title: "Report",
-        }}
-      />
+        <Tabs.Screen
+          name="walk-safe"
+          options={{
+            title: "Walk",
+          }}
+        />
 
-      <Tabs.Screen
-        name="risk-map"
-        options={{
-          title: "Map",
-        }}
-      />
+        <Tabs.Screen
+          name="report"
+          options={{
+            title: "Report",
+          }}
+        />
 
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-        }}
-      />
-    </Tabs>
+        <Tabs.Screen
+          name="risk-map"
+          options={{
+            title: "Map",
+          }}
+        />
+
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profile",
+          }}
+        />
+      </Tabs>
+    </>
   );
 }
 

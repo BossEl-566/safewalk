@@ -53,6 +53,7 @@ import {
   updateLiveShareLocationApi,
   checkInLiveShareSessionApi,
   completeLiveShareSessionApi,
+  cancelLiveShareSessionApi,
   escalateLiveShareToSOSApi,
 } from "../../lib/liveShareApi";
 import { checkLocationRiskApi } from "../../lib/riskApi";
@@ -64,6 +65,7 @@ import {
 } from "../../types/navigation";
 import { PlaceSuggestion } from "../../types/place";
 import { LocationRiskResult } from "../../types/risk";
+import { useActiveTripStore } from "../../store/activeTripStore";
 
 import {
   speakDangerZone,
@@ -198,6 +200,15 @@ export default function NavigationScreen() {
   const activeShare = useLiveShareStore((state) => state.activeShare);
   const setActiveShare = useLiveShareStore((state) => state.setActiveShare);
   const clearActiveShare = useLiveShareStore((state) => state.clearActiveShare);
+  const activeTrip = useActiveTripStore((state) => state.activeTrip);
+const startTrip = useActiveTripStore((state) => state.startTrip);
+const updateTripCurrentLocation = useActiveTripStore(
+  (state) => state.updateCurrentLocation
+);
+const markTripCheckIn = useActiveTripStore((state) => state.markCheckIn);
+const completeTrip = useActiveTripStore((state) => state.completeTrip);
+const cancelTrip = useActiveTripStore((state) => state.cancelTrip);
+const clearTrip = useActiveTripStore((state) => state.clearTrip);
 
   const mapRef = useRef<LeafletMapViewRef | null>(null);
   const bottomSheetRef = useRef<BottomSheet | null>(null);
@@ -285,6 +296,68 @@ export default function NavigationScreen() {
   };
 
   useEffect(() => {
+  if (!activeTrip || activeTrip.status !== "active") return;
+
+  setIsTracking(true);
+
+  setDestinationName(activeTrip.destinationName);
+  setSearchText(activeTrip.destinationName);
+
+  if (activeTrip.destinationLocation) {
+    setDestination({
+      latitude: activeTrip.destinationLocation.latitude,
+      longitude: activeTrip.destinationLocation.longitude,
+    });
+  }
+
+  if (activeTrip.currentLocation) {
+    const restoredLocation = {
+      latitude: activeTrip.currentLocation.latitude,
+      longitude: activeTrip.currentLocation.longitude,
+    };
+
+    setUserLocation(restoredLocation);
+
+    mapRef.current?.animateToRegion({
+      ...restoredLocation,
+      latitudeDelta: 0.015,
+      longitudeDelta: 0.015,
+    });
+  }
+
+  if (activeTrip.shareToken && !activeShare?.shareToken) {
+    setActiveShare({
+      shareToken: activeTrip.shareToken,
+      ownerName: "SafeWalk User",
+      mode: activeTrip.mode,
+      status: "active",
+      destinationName: activeTrip.destinationName,
+      destinationLocation: activeTrip.destinationLocation
+        ? {
+            latitude: activeTrip.destinationLocation.latitude,
+            longitude: activeTrip.destinationLocation.longitude,
+            timestamp: new Date().toISOString(),
+          }
+        : null,
+      currentLocation: activeTrip.currentLocation
+        ? {
+            latitude: activeTrip.currentLocation.latitude,
+            longitude: activeTrip.currentLocation.longitude,
+            timestamp: new Date().toISOString(),
+          }
+        : null,
+      routeRiskLevel: activeTrip.riskLevel,
+      routeRiskScore: activeTrip.riskScore,
+      lastCheckInStatus: activeTrip.lastCheckInAt ? "safe" : "not_checked",
+      lastCheckInAt: activeTrip.lastCheckInAt ?? null,
+      expectedArrivalAt: activeTrip.expectedArrivalAt ?? null,
+      locationUpdates: [],
+      createdAt: activeTrip.startedAt,
+    } as any);
+  }
+}, [activeTrip, activeShare?.shareToken, setActiveShare]);
+
+  useEffect(() => {
     return () => {
       clearCheckInTimers();
 
@@ -358,10 +431,11 @@ ${shareSession.shareToken}`;
 
     try {
       const updated = await checkInLiveShareSessionApi(activeShare.shareToken);
-      setActiveShare(updated);
-      speakSafeCheckIn();
+setActiveShare(updated);
+markTripCheckIn();
+speakSafeCheckIn();
 
-      Alert.alert("Check-in Sent", "Your friend can now see that you are safe.");
+Alert.alert("Check-in Sent", "Your friend can now see that you are safe.");
     } catch (error) {
       Alert.alert("Check-in Failed", "Could not send your safety check-in.");
     }
@@ -893,6 +967,28 @@ ${shareSession.shareToken}`;
 
       setActiveShare(liveShare);
 
+      startTrip({
+  shareToken: liveShare.shareToken,
+  mode: "walk_home",
+  destinationName: destinationName || "Selected destination",
+  destinationLocation: destination
+    ? {
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      }
+    : null,
+  currentLocation: {
+    latitude: userLocation.latitude,
+    longitude: userLocation.longitude,
+  },
+  riskLevel: route.riskLevel,
+  riskScore: route.riskScore,
+  expectedArrivalAt: null,
+
+  // Use 2 minutes for demo. Later you can change it to 10 or 15.
+  checkInIntervalMinutes: 2,
+});  
+
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status !== "granted") {
@@ -924,8 +1020,9 @@ ${shareSession.shareToken}`;
           };
 
           setUserLocation(coordinate);
-          updatePassedAndRemainingRoute(coordinate);
-          checkCurrentAreaRisk(coordinate);
+updateTripCurrentLocation(coordinate);
+updatePassedAndRemainingRoute(coordinate);
+checkCurrentAreaRisk(coordinate);
 
           updateLiveShareLocationApi(liveShare.shareToken, {
             latitude: coordinate.latitude,
@@ -1033,6 +1130,28 @@ ${shareSession.shareToken}`;
       setDemoStepIndex(0);
       startPeriodicCheckIns();
 
+      const demoStartPoint = route.coordinates[0];
+
+startTrip({
+  shareToken: liveShareToken,
+  mode: "walk_home",
+  destinationName: destinationName || "Selected destination",
+  destinationLocation: destination
+    ? {
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      }
+    : null,
+  currentLocation: {
+    latitude: demoStartPoint.latitude,
+    longitude: demoStartPoint.longitude,
+  },
+  riskLevel: route.riskLevel,
+  riskScore: route.riskScore,
+  expectedArrivalAt: null,
+  checkInIntervalMinutes: 2,
+});
+
       let index = 0;
 
       demoIntervalRef.current = setInterval(() => {
@@ -1050,7 +1169,8 @@ ${shareSession.shareToken}`;
         }
 
         setUserLocation(coordinate);
-        setDemoStepIndex(index);
+updateTripCurrentLocation(coordinate);
+setDemoStepIndex(index);
         updatePassedAndRemainingRoute(coordinate);
         checkCurrentAreaRisk(coordinate);
 
@@ -1088,30 +1208,77 @@ ${shareSession.shareToken}`;
     }
   };
 
-  const handleStopTracking = async () => {
-    stopSafeWalkVoice();
-    clearCheckInTimers();
-    closeCheckInModal();
-    stopDemoWalk();
+  const finishTracking = async (finalStatus: "completed" | "cancelled") => {
+  stopSafeWalkVoice();
+  clearCheckInTimers();
+  closeCheckInModal();
+  stopDemoWalk();
 
-    if (sosEscalationTimerRef.current) {
-      clearTimeout(sosEscalationTimerRef.current);
-      sosEscalationTimerRef.current = null;
-    }
+  if (sosEscalationTimerRef.current) {
+    clearTimeout(sosEscalationTimerRef.current);
+    sosEscalationTimerRef.current = null;
+  }
 
-    locationSubscriptionRef.current?.remove();
-    locationSubscriptionRef.current = null;
+  locationSubscriptionRef.current?.remove();
+  locationSubscriptionRef.current = null;
 
-    setIsTracking(false);
+  setIsTracking(false);
+  setDemoWalking(false);
 
+  try {
     if (activeShare?.shareToken) {
-      completeLiveShareSessionApi(activeShare.shareToken).catch((error) => {
-        console.log("Complete live share failed:", error);
-      });
+      if (finalStatus === "completed") {
+        await completeLiveShareSessionApi(activeShare.shareToken);
+      } else {
+        await cancelLiveShareSessionApi(activeShare.shareToken);
+      }
     }
+  } catch (error) {
+    console.log("Finish tracking failed:", error);
+  }
 
-    clearActiveShare();
-  };
+  if (finalStatus === "completed") {
+    completeTrip();
+
+    Alert.alert(
+      "Arrived Safely",
+      "Your Walk Home session has been completed."
+    );
+  } else {
+    cancelTrip();
+
+    Alert.alert(
+      "Walk Cancelled",
+      "Your live monitoring session has been cancelled."
+    );
+  }
+
+  clearActiveShare();
+};
+
+const handleArrived = async () => {
+  await finishTracking("completed");
+};
+
+const handleCancelTracking = async () => {
+  Alert.alert(
+    "Cancel Walk?",
+    "This will stop live monitoring and check-in reminders.",
+    [
+      {
+        text: "Keep Walking",
+        style: "cancel",
+      },
+      {
+        text: "Cancel Walk",
+        style: "destructive",
+        onPress: async () => {
+          await finishTracking("cancelled");
+        },
+      },
+    ]
+  );
+};
 
   const handleClearDestination = () => {
     setDestination(null);
@@ -1125,7 +1292,7 @@ ${shareSession.shareToken}`;
     setRemainingRoute([]);
     setIsTracking(false);
     setRerouteCount(0);
-    handleStopTracking();
+    finishTracking("cancelled");
   };
 
   return (
@@ -1564,13 +1731,15 @@ ${shareSession.shareToken}`;
                     <Text style={styles.sosActionText}>SOS</Text>
                   </Pressable>
 
-                  <Pressable
-                    onPress={handleStopTracking}
-                    style={styles.stopActionChip}
-                  >
-                    <X size={17} color={COLORS.mutedText} />
-                    <Text style={styles.stopActionText}>Stop</Text>
-                  </Pressable>
+                  <Pressable onPress={handleArrived} style={styles.safeActionChip}>
+  <ShieldCheck size={17} color={COLORS.primary} />
+  <Text style={styles.safeActionText}>Arrived</Text>
+</Pressable>
+
+<Pressable onPress={handleCancelTracking} style={styles.stopActionChip}>
+  <X size={17} color={COLORS.mutedText} />
+  <Text style={styles.stopActionText}>Cancel</Text>
+</Pressable>
                 </View>
               </View>
             ) : null}

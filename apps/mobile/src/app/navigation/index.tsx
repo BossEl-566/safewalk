@@ -1762,6 +1762,7 @@ const handleCancelTracking = async () => {
         onClose={closeCheckInModal}
       />
     </View>
+    
   );
 }
 

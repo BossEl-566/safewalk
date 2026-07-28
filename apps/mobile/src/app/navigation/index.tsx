@@ -917,7 +917,7 @@ Alert.alert("Check-in Sent", "Your friend can now see that you are safe.");
 
     checkInIntervalRef.current = setInterval(() => {
       triggerSafetyCheckInPopup();
-    }, 30000);
+    }, 15000);
   };
 
   const handleModalCheckIn = async () => {

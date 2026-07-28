@@ -1,5 +1,6 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BellRing,
@@ -7,6 +8,7 @@ import {
   ContactRound,
   History,
   RadioTower,
+  RefreshCcw,
   Settings,
   Share2,
   ShieldAlert,
@@ -124,6 +126,69 @@ function StatusCard({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
 
+  const handleRunOnboardingAgain = async () => {
+    try {
+      /**
+       * These remove common onboarding flags.
+       * Even if one key does not exist, it will not break the app.
+       */
+      await AsyncStorage.multiRemove([
+        "safewalk-onboarding-complete",
+        "onboarding-complete",
+        "hasCompletedOnboarding",
+      ]);
+
+      router.replace("/onboarding");
+    } catch (error) {
+      Alert.alert(
+        "Onboarding Error",
+        "Could not open onboarding. Please try again."
+      );
+    }
+  };
+
+  const handleResetDemoApp = () => {
+    Alert.alert(
+      "Reset Demo App?",
+      "This will clear saved demo data on this phone, including active trips, saved tokens, contacts, and onboarding status. Use this before presenting from fresh.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              /**
+               * This clears the local saved app data.
+               * It is useful for a clean project demo.
+               */
+              await AsyncStorage.clear();
+
+              Alert.alert(
+                "Demo Reset Complete",
+                "The app has been reset. You can now start the onboarding demo again.",
+                [
+                  {
+                    text: "Start Onboarding",
+                    onPress: () => router.replace("/onboarding"),
+                  },
+                ]
+              );
+            } catch (error) {
+              Alert.alert(
+                "Reset Failed",
+                "Could not reset the demo data. Please try again."
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <Screen scroll>
       <View style={styles.heroCard}>
@@ -144,7 +209,7 @@ export default function ProfileScreen() {
 
         <Text style={styles.subtitle}>
           Manage your trusted contacts, live monitoring tools, safety
-          preferences, and demo admin controls.
+          preferences, onboarding demo, and admin controls.
         </Text>
 
         <View style={styles.heroDivider} />
@@ -178,6 +243,33 @@ export default function ProfileScreen() {
           title="Monitoring"
           value="Live"
           icon={<RadioTower size={20} color={COLORS.info} />}
+        />
+      </View>
+
+      <View style={styles.sectionHeaderBox}>
+        <Text style={styles.sectionTitle}>Demo setup</Text>
+        <Text style={styles.sectionSubtitle}>
+          Use these tools when you want to present the app from the beginning.
+        </Text>
+      </View>
+
+      <View style={styles.menuSection}>
+        <ProfileMenuCard
+          title="Run Onboarding Again"
+          description="Open the onboarding screens again without clearing all app data."
+          badge="Demo"
+          variant="info"
+          icon={<ShieldCheck size={25} color={COLORS.info} />}
+          onPress={handleRunOnboardingAgain}
+        />
+
+        <ProfileMenuCard
+          title="Reset Demo & Start Fresh"
+          description="Clear local demo data and restart from onboarding like a new user."
+          badge="Reset"
+          variant="danger"
+          icon={<RefreshCcw size={25} color={COLORS.danger} />}
+          onPress={handleResetDemoApp}
         />
       </View>
 
@@ -241,8 +333,8 @@ export default function ProfileScreen() {
         <View style={styles.infoTextBox}>
           <Text style={styles.infoTitle}>Demo security note</Text>
           <Text style={styles.infoText}>
-            Admin access is open for the project demo. Later, protect this area
-            with secure login and role-based permissions.
+            Use “Reset Demo & Start Fresh” before presenting if you want the app
+            to behave like it is being opened for the first time.
           </Text>
         </View>
       </View>

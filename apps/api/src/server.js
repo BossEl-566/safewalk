@@ -6,11 +6,16 @@ const connectDB = require("./config/db");
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
-  await connectDB();
+  try {
+    await connectDB();
 
-  app.listen(PORT, () => {
-    console.log(`SafeWalk AI API running on port ${PORT}`);
-  });
+    app.listen(PORT, () => {
+      console.log(`SafeCampus AI API running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start SafeCampus AI API:", error.message);
+    process.exit(1);
+  }
 }
 
 startServer();

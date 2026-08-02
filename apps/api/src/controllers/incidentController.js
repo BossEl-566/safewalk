@@ -11,33 +11,35 @@ function buildDuplicateKey({ category, locationName, buildingName, roomNumber })
 
 async function createIncidentReport(req, res) {
   try {
-    const {
-      category = "other",
-      problemType = "",
-      title = "",
-      description,
-      severity = "medium",
-      priority,
-      areaType = "on_campus",
-      location = null,
-      locationName = "",
-      buildingName = "",
-      roomNumber = "",
-      landmark = "",
-      evidence = [],
-      reporterName = "",
-      reporterPhone = "",
-      reporterEmail = "",
-      reporterStudentId = "",
-      anonymous = true,
-      occurredAt,
+    const body = req.body || {};
 
-      // Legacy fields from the old SafeWalk version
-      victimWasAlone = false,
-      weaponInvolved = false,
-      attackerMode = "",
-      lightingCondition = "",
-    } = req.body;
+const {
+  category = "other",
+  problemType = "",
+  title = "",
+  description,
+  severity = "medium",
+  priority,
+  areaType = "on_campus",
+  location = null,
+  locationName = "",
+  buildingName = "",
+  roomNumber = "",
+  landmark = "",
+  evidence = [],
+  reporterName = "",
+  reporterPhone = "",
+  reporterEmail = "",
+  reporterStudentId = "",
+  anonymous = true,
+  occurredAt,
+
+  // Legacy fields from the old SafeWalk version
+  victimWasAlone = false,
+  weaponInvolved = false,
+  attackerMode = "",
+  lightingCondition = "",
+} = body;
 
     if (!description || !description.trim()) {
       return res.status(400).json({

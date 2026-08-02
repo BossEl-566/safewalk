@@ -1,17 +1,27 @@
-import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  Accessibility,
   AlertTriangle,
-  Bike,
-  CarFront,
-  CircleDollarSign,
-  Eye,
+  Brain,
+  Building2,
+  Camera,
+  CircleAlert,
+  Droplets,
+  Flame,
+  HeartPulse,
+  Home,
+  ImagePlus,
+  Laptop,
   LightbulbOff,
   MapPin,
   ShieldAlert,
-  UserRound,
+  Sparkles,
+  Trash2,
+  Wrench,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -28,17 +38,18 @@ import {
 import {
   IncidentAreaType,
   IncidentCategory,
-  IncidentSeverity,
+  IncidentPriority,
+  ReportEvidence,
 } from "../../types/incident";
 import { useIncidentStore } from "../../store/incidentStore";
 import { getCurrentLocation } from "../../lib/location";
 import { createIncidentReportApi } from "../../lib/incidentApi";
-import { useSafetySettingsStore } from "../../store/safetySettingsStore";
 import {
   autocompletePlacesApi,
   getPlaceDetailsApi,
 } from "../../lib/placeApi";
 import { PlaceSuggestion } from "../../types/place";
+import { generateIncidentAI } from "../../utils/incidentAI";
 
 type CategoryOption = {
   label: string;
@@ -48,58 +59,83 @@ type CategoryOption = {
 
 const categories: CategoryOption[] = [
   {
-    label: "Phone Snatch",
-    value: "phone_snatch",
-    icon: <Bike size={20} color={COLORS.primary} />,
-  },
-  {
-    label: "Robbery",
-    value: "robbery",
+    label: "Security",
+    value: "security_emergency",
     icon: <ShieldAlert size={20} color={COLORS.primary} />,
   },
   {
-    label: "Attack",
-    value: "attack",
-    icon: <AlertTriangle size={20} color={COLORS.primary} />,
+    label: "Medical",
+    value: "medical_emergency",
+    icon: <HeartPulse size={20} color={COLORS.primary} />,
   },
   {
-    label: "Suspicious Motorbike",
-    value: "suspicious_motorbike",
-    icon: <Bike size={20} color={COLORS.primary} />,
+    label: "Fire",
+    value: "fire_emergency",
+    icon: <Flame size={20} color={COLORS.primary} />,
   },
   {
-    label: "Forced MoMo",
-    value: "forced_momo_withdrawal",
-    icon: <CircleDollarSign size={20} color={COLORS.primary} />,
+    label: "Flooding",
+    value: "flooding",
+    icon: <Droplets size={20} color={COLORS.primary} />,
   },
   {
-    label: "Poor Lighting",
-    value: "poor_lighting",
+    label: "Electrical",
+    value: "electrical_fault",
     icon: <LightbulbOff size={20} color={COLORS.primary} />,
   },
   {
-    label: "Harassment",
-    value: "harassment",
-    icon: <UserRound size={20} color={COLORS.primary} />,
+    label: "Lecture Room",
+    value: "lecture_room_fault",
+    icon: <Building2 size={20} color={COLORS.primary} />,
   },
   {
-    label: "Unsafe Shortcut",
-    value: "unsafe_shortcut",
+    label: "Furniture",
+    value: "furniture_damage",
+    icon: <Wrench size={20} color={COLORS.primary} />,
+  },
+  {
+    label: "Sanitation",
+    value: "sanitation_issue",
+    icon: <Droplets size={20} color={COLORS.primary} />,
+  },
+  {
+    label: "Water Leakage",
+    value: "water_leakage",
+    icon: <Droplets size={20} color={COLORS.primary} />,
+  },
+  {
+    label: "ICT Problem",
+    value: "ict_problem",
+    icon: <Laptop size={20} color={COLORS.primary} />,
+  },
+  {
+    label: "Walkway Hazard",
+    value: "road_walkway_hazard",
     icon: <MapPin size={20} color={COLORS.primary} />,
   },
   {
-    label: "Accident",
-    value: "accident",
-    icon: <CarFront size={20} color={COLORS.primary} />,
+    label: "Hostel / Hall",
+    value: "hostel_hall_issue",
+    icon: <Home size={20} color={COLORS.primary} />,
   },
   {
-    label: "Other",
-    value: "other",
-    icon: <Eye size={20} color={COLORS.primary} />,
+    label: "Disaster",
+    value: "disaster_hazard",
+    icon: <AlertTriangle size={20} color={COLORS.primary} />,
+  },
+  {
+    label: "Accessibility",
+    value: "accessibility_issue",
+    icon: <Accessibility size={20} color={COLORS.primary} />,
+  },
+  {
+    label: "Lost & Found",
+    value: "lost_found",
+    icon: <CircleAlert size={20} color={COLORS.primary} />,
   },
 ];
 
-const severityOptions: IncidentSeverity[] = [
+const priorityOptions: IncidentPriority[] = [
   "low",
   "medium",
   "high",
@@ -115,17 +151,18 @@ const areaOptions: { label: string; value: IncidentAreaType }[] = [
 export default function ReportScreen() {
   const insets = useSafeAreaInsets();
 
-  const anonymousReportingDefault = useSafetySettingsStore(
-    (state) => state.anonymousReportingDefault
-  );
-
   const createReport = useIncidentStore((state) => state.createReport);
 
-  const [category, setCategory] = useState<IncidentCategory>("phone_snatch");
-  const [severity, setSeverity] = useState<IncidentSeverity>("medium");
-  const [areaType, setAreaType] = useState<IncidentAreaType>("off_campus");
+  const [category, setCategory] =
+    useState<IncidentCategory>("lecture_room_fault");
+  const [priority, setPriority] = useState<IncidentPriority>("medium");
+  const [areaType, setAreaType] = useState<IncidentAreaType>("on_campus");
 
   const [locationName, setLocationName] = useState("");
+  const [buildingName, setBuildingName] = useState("");
+  const [roomNumber, setRoomNumber] = useState("");
+  const [landmark, setLandmark] = useState("");
+
   const [locationSuggestions, setLocationSuggestions] = useState<
     PlaceSuggestion[]
   >([]);
@@ -137,14 +174,28 @@ export default function ReportScreen() {
   } | null>(null);
 
   const [description, setDescription] = useState("");
-  const [attackerMode, setAttackerMode] = useState("");
-  const [lightingCondition, setLightingCondition] = useState("");
 
-  const [victimWasAlone, setVictimWasAlone] = useState(true);
-  const [weaponInvolved, setWeaponInvolved] = useState(false);
-  const [anonymous, setAnonymous] = useState(anonymousReportingDefault);
+  const [reporterName, setReporterName] = useState("");
+  const [reporterStudentId, setReporterStudentId] = useState("");
+  const [reporterPhone, setReporterPhone] = useState("");
+  const [anonymous, setAnonymous] = useState(true);
+
+  const [evidence, setEvidence] = useState<ReportEvidence[]>([]);
 
   const [loading, setLoading] = useState(false);
+
+  const aiPreview = useMemo(() => {
+    return generateIncidentAI({
+      category,
+      priority,
+      severity: priority,
+      areaType,
+      description,
+      locationName,
+      buildingName,
+      roomNumber,
+    });
+  }, [category, priority, areaType, description, locationName, buildingName, roomNumber]);
 
   useEffect(() => {
     const query = locationName.trim();
@@ -198,11 +249,9 @@ export default function ReportScreen() {
         });
       }
     } catch (error) {
-      console.log("Place details failed:", error);
-
       Alert.alert(
         "Location Error",
-        "SafeWalk AI could not get coordinates for this location."
+        "SafeCampus AI could not get coordinates for this location."
       );
     } finally {
       setSearchingLocation(false);
@@ -214,12 +263,16 @@ export default function ReportScreen() {
       const location = await getCurrentLocation();
 
       setSelectedPlaceLocation(location);
-      setLocationName("Current GPS location");
+
+      if (!locationName.trim()) {
+        setLocationName("Current GPS location");
+      }
+
       setLocationSuggestions([]);
 
       Alert.alert(
         "Location Captured",
-        "Your current GPS location will be attached to this report."
+        "Your current GPS location will be attached to this campus issue report."
       );
     } catch (error) {
       Alert.alert(
@@ -231,11 +284,98 @@ export default function ReportScreen() {
     }
   };
 
+  const handleTakePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Camera Permission Needed",
+        "Allow camera access so you can attach evidence to the report."
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsEditing: false,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setEvidence((current) => [
+        ...current,
+        {
+          uri: result.assets[0].uri,
+          type: "image",
+          uploadedAt: new Date().toISOString(),
+        },
+      ]);
+    }
+  };
+
+  const handlePickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Gallery Permission Needed",
+        "Allow photo access so you can attach evidence to the report."
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsMultipleSelection: true,
+    });
+
+    if (!result.canceled) {
+      const selectedImages = result.assets.map((asset) => ({
+        uri: asset.uri,
+        type: "image" as const,
+        uploadedAt: new Date().toISOString(),
+      }));
+
+      setEvidence((current) => [...current, ...selectedImages]);
+    }
+  };
+
+  const handleRemoveEvidence = (uri: string) => {
+    setEvidence((current) => current.filter((item) => item.uri !== uri));
+  };
+
+  const resetForm = () => {
+    setCategory("lecture_room_fault");
+    setPriority("medium");
+    setAreaType("on_campus");
+    setLocationName("");
+    setBuildingName("");
+    setRoomNumber("");
+    setLandmark("");
+    setSelectedPlaceLocation(null);
+    setLocationSuggestions([]);
+    setDescription("");
+    setReporterName("");
+    setReporterStudentId("");
+    setReporterPhone("");
+    setAnonymous(true);
+    setEvidence([]);
+  };
+
   const handleSubmitReport = async () => {
     if (!description.trim()) {
       Alert.alert(
         "Missing Description",
-        "Please briefly describe what happened."
+        "Please describe the campus problem before submitting."
+      );
+      return;
+    }
+
+    if (!locationName.trim() && !buildingName.trim()) {
+      Alert.alert(
+        "Missing Location",
+        "Please provide a location name, building, room, or use your current GPS location."
       );
       return;
     }
@@ -256,69 +396,49 @@ export default function ReportScreen() {
       const reportPayload = {
         category,
         description,
-        severity,
+        severity: priority,
+        priority,
         areaType,
         location,
         locationName,
-        victimWasAlone,
-        weaponInvolved,
-        attackerMode,
-        lightingCondition,
+        buildingName,
+        roomNumber,
+        landmark,
+        evidence,
+        reporterName,
+        reporterPhone,
+        reporterStudentId,
         anonymous,
       };
 
-      const localReportId = createReport(reportPayload);
+      createReport(reportPayload);
 
-      try {
-        await createIncidentReportApi(reportPayload);
+      const response = await createIncidentReportApi(reportPayload);
+      const savedReport = response.data;
 
-        Alert.alert(
-          "Report Saved",
-          "Your incident report has been saved locally and synced to the SafeWalk AI database.",
-          [
-            {
-              text: "View Risk Map",
-              onPress: () => router.push("/(tabs)/risk-map"),
-            },
-            {
-              text: "Done",
-              style: "cancel",
-            },
-          ]
-        );
-      } catch (syncError) {
-        console.log("Backend sync failed:", syncError);
+      Alert.alert(
+        "Report Submitted",
+        `SafeCampus AI classified this as ${savedReport.problemType || savedReport.title}.\n\nAssigned to:\n${savedReport.assignedUnit || savedReport.aiSuggestedUnit || "Responsible authority"}`,
+        [
+          {
+            text: "View Issue Map",
+            onPress: () => router.push("/(tabs)/risk-map"),
+          },
+          {
+            text: "Done",
+            style: "cancel",
+          },
+        ]
+      );
 
-        Alert.alert(
-          "Saved Locally",
-          "Your report was saved on this phone, but it could not sync to the backend. Check that your API server is running and your phone is on the same network.",
-          [
-            {
-              text: "View Risk Map",
-              onPress: () => router.push("/(tabs)/risk-map"),
-            },
-            {
-              text: "Done",
-              style: "cancel",
-            },
-          ]
-        );
-      }
+      resetForm();
+    } catch (error) {
+      console.log("Submit campus report failed:", error);
 
-      console.log("Local incident report created:", localReportId);
-
-      setDescription("");
-      setLocationName("");
-      setSelectedPlaceLocation(null);
-      setLocationSuggestions([]);
-      setAttackerMode("");
-      setLightingCondition("");
-      setSeverity("medium");
-      setCategory("phone_snatch");
-      setAreaType("off_campus");
-      setVictimWasAlone(true);
-      setWeaponInvolved(false);
-      setAnonymous(anonymousReportingDefault);
+      Alert.alert(
+        "Saved Locally",
+        "Your report was saved on this phone, but it could not sync to the backend. Check that your API server is running."
+      );
     } finally {
       setLoading(false);
     }
@@ -328,21 +448,22 @@ export default function ReportScreen() {
     <Screen scroll>
       <View style={styles.heroCard}>
         <View style={styles.heroIcon}>
-          <ShieldAlert size={34} color={COLORS.danger} />
+          <Sparkles size={34} color={COLORS.primary} />
         </View>
 
-        <Text style={styles.heroTitle}>Report an Incident</Text>
+        <Text style={styles.heroTitle}>Report Campus Issue</Text>
 
         <Text style={styles.heroText}>
-          Report safety issues around campus or off-campus areas. Your report
-          helps SafeWalk AI warn other students.
+          Report lecture room faults, disasters, sanitation issues, ICT
+          problems, safety concerns, and other University of Ghana campus issues.
+          SafeCampus AI will classify and route it to the responsible unit.
         </Text>
       </View>
 
       <View style={styles.section}>
         <SectionHeader
-          title="What happened?"
-          subtitle="Choose the closest incident type."
+          title="What problem happened?"
+          subtitle="Choose the closest issue type. AI can still correct the category based on your description."
         />
 
         <View style={styles.categoryGrid}>
@@ -381,13 +502,13 @@ export default function ReportScreen() {
       <View style={styles.section}>
         <SectionHeader
           title="Where did it happen?"
-          subtitle="Search the place or use your current GPS location."
+          subtitle="Provide the exact place, building, room, or landmark."
         />
 
         <View style={styles.locationCard}>
           <AppInput
             label="Location name"
-            placeholder="Search area, hostel, junction, or road"
+            placeholder="Example: JQB Room 12, Balme Library, Night Market"
             value={locationName}
             onChangeText={handleLocationNameChange}
             autoCapitalize="words"
@@ -425,12 +546,37 @@ export default function ReportScreen() {
             </View>
           ) : null}
 
+          <View style={styles.twoColumnRow}>
+            <AppInput
+              label="Building"
+              placeholder="JQB"
+              value={buildingName}
+              onChangeText={setBuildingName}
+              style={styles.compactInput}
+            />
+
+            <AppInput
+              label="Room"
+              placeholder="12"
+              value={roomNumber}
+              onChangeText={setRoomNumber}
+              style={styles.compactInput}
+            />
+          </View>
+
+          <AppInput
+            label="Nearby landmark"
+            placeholder="Example: Near main entrance, behind the library"
+            value={landmark}
+            onChangeText={setLandmark}
+          />
+
           {selectedPlaceLocation ? (
             <View style={styles.selectedLocationBox}>
               <MapPin size={18} color={COLORS.primary} />
 
               <Text style={styles.selectedLocationText}>
-                Location selected with GPS coordinates.
+                GPS coordinates attached to this report.
               </Text>
             </View>
           ) : null}
@@ -476,28 +622,28 @@ export default function ReportScreen() {
 
       <View style={styles.section}>
         <SectionHeader
-          title="Severity"
-          subtitle="How serious was the incident?"
+          title="Priority"
+          subtitle="How urgent is this problem?"
         />
 
-        <View style={styles.severityRow}>
-          {severityOptions.map((option) => {
-            const selected = option === severity;
+        <View style={styles.priorityRow}>
+          {priorityOptions.map((option) => {
+            const selected = option === priority;
 
             return (
               <Pressable
                 key={option}
-                onPress={() => setSeverity(option)}
+                onPress={() => setPriority(option)}
                 style={[
-                  styles.severityChip,
-                  selected && styles.severityChipSelected,
+                  styles.priorityChip,
+                  selected && styles.priorityChipSelected,
                   option === "critical" && styles.criticalBorder,
                 ]}
               >
                 <Text
                   style={[
-                    styles.severityText,
-                    selected && styles.severityTextSelected,
+                    styles.priorityText,
+                    selected && styles.priorityTextSelected,
                   ]}
                 >
                   {option.toUpperCase()}
@@ -511,49 +657,67 @@ export default function ReportScreen() {
       <View style={styles.section}>
         <SectionHeader
           title="Description"
-          subtitle="Keep it short. Do not include private details of victims."
+          subtitle="Explain the problem clearly. Avoid private details."
         />
 
         <AppInput
-          label="Brief description"
-          placeholder="Example: Two people on a motorbike snatched a phone near the junction."
+          label="Problem description"
+          placeholder="Example: The projector in JQB Room 12 is not working and students cannot see lecture slides."
           value={description}
           onChangeText={setDescription}
           multiline
           style={styles.descriptionInput}
         />
-
-        <AppInput
-          label="Attacker movement/mode, optional"
-          placeholder="Example: Motorbike, walking, car"
-          value={attackerMode}
-          onChangeText={setAttackerMode}
-        />
-
-        <AppInput
-          label="Lighting condition, optional"
-          placeholder="Example: Poor lighting, dark road"
-          value={lightingCondition}
-          onChangeText={setLightingCondition}
-        />
       </View>
 
       <View style={styles.section}>
         <SectionHeader
-          title="Context"
-          subtitle="These details help estimate risk."
+          title="Photo evidence"
+          subtitle="Attach a picture so authorities can verify the issue."
         />
 
-        <ToggleRow
-          title="Victim was alone"
-          value={victimWasAlone}
-          onPress={() => setVictimWasAlone((value) => !value)}
-        />
+        <View style={styles.evidenceActions}>
+          <Pressable onPress={handleTakePhoto} style={styles.evidenceButton}>
+            <Camera size={19} color={COLORS.primary} />
+            <Text style={styles.evidenceButtonText}>Take Photo</Text>
+          </Pressable>
 
-        <ToggleRow
-          title="Weapon involved"
-          value={weaponInvolved}
-          onPress={() => setWeaponInvolved((value) => !value)}
+          <Pressable onPress={handlePickImage} style={styles.evidenceButton}>
+            <ImagePlus size={19} color={COLORS.primary} />
+            <Text style={styles.evidenceButtonText}>Choose Image</Text>
+          </Pressable>
+        </View>
+
+        {evidence.length ? (
+          <View style={styles.evidenceGrid}>
+            {evidence.map((item) => (
+              <View key={item.uri} style={styles.evidencePreview}>
+                <Image source={{ uri: item.uri }} style={styles.evidenceImage} />
+
+                <Pressable
+                  onPress={() => handleRemoveEvidence(item.uri)}
+                  style={styles.removeEvidenceButton}
+                >
+                  <Trash2 size={15} color={COLORS.white} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyEvidenceBox}>
+            <ImagePlus size={24} color={COLORS.mutedText} />
+            <Text style={styles.emptyEvidenceText}>
+              No photo attached yet. You can still submit, but evidence helps
+              authorities understand the problem faster.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="Reporter details"
+          subtitle="You can report anonymously, but contact details help authorities follow up."
         />
 
         <ToggleRow
@@ -561,19 +725,78 @@ export default function ReportScreen() {
           value={anonymous}
           onPress={() => setAnonymous((value) => !value)}
         />
+
+        {!anonymous ? (
+          <View style={styles.reporterBox}>
+            <AppInput
+              label="Your name"
+              placeholder="Optional"
+              value={reporterName}
+              onChangeText={setReporterName}
+            />
+
+            <AppInput
+              label="Student ID"
+              placeholder="Optional"
+              value={reporterStudentId}
+              onChangeText={setReporterStudentId}
+            />
+
+            <AppInput
+              label="Phone number"
+              placeholder="Optional"
+              value={reporterPhone}
+              onChangeText={setReporterPhone}
+              keyboardType="phone-pad"
+            />
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.aiPreviewCard}>
+        <View style={styles.aiPreviewTop}>
+          <View style={styles.aiIcon}>
+            <Brain size={22} color={COLORS.primary} />
+          </View>
+
+          <View style={styles.aiTextBox}>
+            <Text style={styles.aiTitle}>AI routing preview</Text>
+            <Text style={styles.aiSubtitle}>
+              SafeCampus AI will refine this after submission.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.aiInfoRow}>
+          <Text style={styles.aiInfoLabel}>Detected issue</Text>
+          <Text style={styles.aiInfoValue}>{aiPreview.problemType}</Text>
+        </View>
+
+        <View style={styles.aiInfoRow}>
+          <Text style={styles.aiInfoLabel}>Priority score</Text>
+          <Text style={styles.aiInfoValue}>{aiPreview.priorityScore}/100</Text>
+        </View>
+
+        <View style={styles.aiInfoRow}>
+          <Text style={styles.aiInfoLabel}>Responsible unit</Text>
+          <Text style={styles.aiInfoValue}>{aiPreview.responsibleUnit}</Text>
+        </View>
+
+        <Text style={styles.aiAction}>{aiPreview.recommendedAction}</Text>
       </View>
 
       <View style={styles.infoCard}>
         <MapPin size={22} color={COLORS.primary} />
 
         <Text style={styles.infoText}>
-          SafeWalk AI will use this report to build future risk alerts and
-          identify unsafe areas. Reports are saved as pending until reviewed.
+          After submission, SafeCampus AI creates a case, classifies the issue,
+          assigns priority, routes it to the responsible unit, and allows
+          authorities to update the status until it is resolved.
         </Text>
       </View>
 
       <AppButton
-        title="Submit Report"
+        title={loading ? "Submitting..." : "Submit Campus Issue"}
         onPress={handleSubmitReport}
         loading={loading}
         disabled={loading}
@@ -620,7 +843,7 @@ const styles = StyleSheet.create({
     width: 74,
     height: 74,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
+    backgroundColor: COLORS.primaryLight,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: SPACING.lg,
@@ -638,6 +861,7 @@ const styles = StyleSheet.create({
     color: COLORS.mutedText,
     textAlign: "center",
     lineHeight: 21,
+    fontWeight: "700",
   },
 
   section: {
@@ -750,6 +974,15 @@ const styles = StyleSheet.create({
     color: COLORS.mutedText,
   },
 
+  twoColumnRow: {
+    flexDirection: "row",
+    gap: SPACING.md,
+  },
+
+  compactInput: {
+    flex: 1,
+  },
+
   selectedLocationBox: {
     marginTop: SPACING.sm,
     backgroundColor: COLORS.primaryLight,
@@ -817,13 +1050,13 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  severityRow: {
+  priorityRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.sm,
   },
 
-  severityChip: {
+  priorityChip: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -832,29 +1065,110 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
 
-  severityChipSelected: {
-    backgroundColor: COLORS.danger,
-    borderColor: COLORS.danger,
+  priorityChipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
 
   criticalBorder: {
     borderColor: COLORS.danger,
   },
 
-  severityText: {
+  priorityText: {
     fontSize: FONT_SIZE.xs,
     fontWeight: "900",
     color: COLORS.text,
   },
 
-  severityTextSelected: {
+  priorityTextSelected: {
     color: COLORS.white,
   },
 
   descriptionInput: {
-    minHeight: 120,
+    minHeight: 130,
     textAlignVertical: "top",
     paddingTop: SPACING.md,
+  },
+
+  evidenceActions: {
+    flexDirection: "row",
+    gap: SPACING.md,
+  },
+
+  evidenceButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    borderWidth: 1,
+    borderColor: "rgba(5, 150, 105, 0.16)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  evidenceButtonText: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+    color: COLORS.primaryDark,
+  },
+
+  evidenceGrid: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.md,
+  },
+
+  evidencePreview: {
+    width: "30%",
+    aspectRatio: 1,
+    borderRadius: RADIUS.lg,
+    overflow: "hidden",
+    backgroundColor: COLORS.surfaceMuted,
+    position: "relative",
+  },
+
+  evidenceImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  removeEvidenceButton: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  emptyEvidenceBox: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  emptyEvidenceText: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
+
+  reporterBox: {
+    marginTop: SPACING.md,
   },
 
   toggleRow: {
@@ -897,6 +1211,80 @@ const styles = StyleSheet.create({
 
   toggleKnobActive: {
     alignSelf: "flex-end",
+  },
+
+  aiPreviewCard: {
+    marginTop: SPACING.xl,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: "rgba(5, 150, 105, 0.18)",
+  },
+
+  aiPreviewTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+
+  aiIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  aiTextBox: {
+    flex: 1,
+  },
+
+  aiTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: "900",
+    color: COLORS.primaryDark,
+  },
+
+  aiSubtitle: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "700",
+    color: COLORS.primaryDark,
+  },
+
+  aiInfoRow: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  aiInfoLabel: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+    color: COLORS.mutedText,
+    textTransform: "uppercase",
+  },
+
+  aiInfoValue: {
+    marginTop: 3,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+
+  aiAction: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "800",
+    color: COLORS.primaryDark,
+    lineHeight: 21,
   },
 
   infoCard: {

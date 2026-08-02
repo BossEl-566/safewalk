@@ -22,6 +22,17 @@ export type AdminSOSAlert = {
 };
 
 export type AdminOverviewStats = {
+  // New SafeCampus AI stats
+  totalReports: number;
+  openReports: number;
+  assignedReports: number;
+  inProgressReports: number;
+  resolvedReports: number;
+  escalatedReports: number;
+  urgentCampusReports: number;
+  criticalReports: number;
+
+  // Legacy names kept so older screens do not break
   totalIncidents: number;
   highRiskIncidents: number;
   criticalIncidents: number;
@@ -37,6 +48,12 @@ export type AdminOverviewStats = {
 
 export type AdminOverview = {
   stats: AdminOverviewStats;
+
+  // New SafeCampus AI names
+  openCampusReports: IncidentReport[];
+  urgentCampusReports: IncidentReport[];
+
+  // Legacy names
   activeSOSAlerts: AdminSOSAlert[];
   highRiskReports: IncidentReport[];
   activeWalkSafeSessions: WalkSafeSession[];
@@ -46,7 +63,7 @@ function normalizeSOSAlert(alert: any): AdminSOSAlert {
   return {
     id: alert.id ?? alert._id ?? String(Date.now()),
     _id: alert._id,
-    userName: alert.userName ?? "SafeWalk User",
+    userName: alert.userName ?? "SafeCampus User",
     status: alert.status ?? "active",
     location: alert.location ?? null,
     message: alert.message ?? "",
@@ -62,28 +79,70 @@ function normalizeSOSAlert(alert: any): AdminSOSAlert {
 function normalizeIncidentReport(report: any): IncidentReport {
   return {
     id: report.id ?? report._id ?? String(Date.now()),
+    _id: report._id,
+
+    institutionId: report.institutionId ?? "university-of-ghana",
+    institutionName: report.institutionName ?? "University of Ghana",
+    campusName: report.campusName ?? "Legon Campus",
+
     category: report.category ?? "other",
-    title: report.title ?? "Safety report",
+    problemType: report.problemType ?? "",
+    title: report.title ?? "Campus issue report",
     description: report.description ?? "",
+
     severity: report.severity ?? "medium",
-    areaType: report.areaType ?? "unknown",
+    priority: report.priority ?? report.severity ?? "medium",
+    priorityScore: Number(report.priorityScore ?? report.aiRiskScore ?? 0),
+
+    areaType: report.areaType ?? "on_campus",
 
     location: report.location ?? null,
     locationName: report.locationName ?? "",
+    buildingName: report.buildingName ?? "",
+    roomNumber: report.roomNumber ?? "",
+    landmark: report.landmark ?? "",
+
+    evidence: report.evidence ?? [],
+
+    reporterName: report.reporterName ?? "",
+    reporterPhone: report.reporterPhone ?? "",
+    reporterEmail: report.reporterEmail ?? "",
+    reporterStudentId: report.reporterStudentId ?? "",
+    anonymous: Boolean(report.anonymous),
+
+    status: report.status ?? "ai_reviewed",
+
+    assignedUnit: report.assignedUnit ?? report.aiSuggestedUnit ?? "",
+    assignedToName: report.assignedToName ?? "",
+
+    acceptedAt: report.acceptedAt ?? null,
+    assignedAt: report.assignedAt ?? null,
+    inProgressAt: report.inProgressAt ?? null,
+    resolvedAt: report.resolvedAt ?? null,
+    closedAt: report.closedAt ?? null,
+
+    escalationLevel: Number(report.escalationLevel ?? 0),
+
+    aiRiskScore: Number(report.aiRiskScore ?? report.priorityScore ?? 0),
+    aiSummary: report.aiSummary ?? "",
+    aiRecommendedAction: report.aiRecommendedAction ?? "",
+    aiSuggestedUnit: report.aiSuggestedUnit ?? report.assignedUnit ?? "",
+    aiDuplicateKey: report.aiDuplicateKey ?? "",
+    duplicateCount: Number(report.duplicateCount ?? 1),
+
+    resolutionSummary: report.resolutionSummary ?? "",
+    resolutionEvidence: report.resolutionEvidence ?? [],
+
+    statusHistory: report.statusHistory ?? [],
+
+    occurredAt: report.occurredAt ?? report.createdAt ?? new Date().toISOString(),
+    createdAt: report.createdAt ?? new Date().toISOString(),
+    updatedAt: report.updatedAt,
 
     victimWasAlone: Boolean(report.victimWasAlone),
     weaponInvolved: Boolean(report.weaponInvolved),
     attackerMode: report.attackerMode ?? "",
     lightingCondition: report.lightingCondition ?? "",
-
-    anonymous: Boolean(report.anonymous),
-    status: report.status ?? "pending",
-
-    aiRiskScore: Number(report.aiRiskScore ?? 0),
-    aiSummary: report.aiSummary ?? "",
-
-    occurredAt: report.occurredAt ?? report.createdAt ?? new Date().toISOString(),
-    createdAt: report.createdAt ?? new Date().toISOString(),
   };
 }
 
@@ -121,11 +180,36 @@ export async function getAdminOverviewApi(): Promise<AdminOverview> {
 
   const data = response.data?.data;
 
+  const openCampusReports = (data?.openCampusReports ?? []).map(
+    normalizeIncidentReport
+  );
+
+  const urgentCampusReports = (data?.urgentCampusReports ?? []).map(
+    normalizeIncidentReport
+  );
+
   return {
     stats: {
-      totalIncidents: Number(data?.stats?.totalIncidents ?? 0),
-      highRiskIncidents: Number(data?.stats?.highRiskIncidents ?? 0),
-      criticalIncidents: Number(data?.stats?.criticalIncidents ?? 0),
+      totalReports: Number(data?.stats?.totalReports ?? data?.stats?.totalIncidents ?? 0),
+      openReports: Number(data?.stats?.openReports ?? 0),
+      assignedReports: Number(data?.stats?.assignedReports ?? 0),
+      inProgressReports: Number(data?.stats?.inProgressReports ?? 0),
+      resolvedReports: Number(data?.stats?.resolvedReports ?? 0),
+      escalatedReports: Number(data?.stats?.escalatedReports ?? 0),
+      urgentCampusReports: Number(
+        data?.stats?.urgentCampusReports ?? data?.stats?.highRiskIncidents ?? 0
+      ),
+      criticalReports: Number(
+        data?.stats?.criticalReports ?? data?.stats?.criticalIncidents ?? 0
+      ),
+
+      totalIncidents: Number(data?.stats?.totalIncidents ?? data?.stats?.totalReports ?? 0),
+      highRiskIncidents: Number(
+        data?.stats?.highRiskIncidents ?? data?.stats?.urgentCampusReports ?? 0
+      ),
+      criticalIncidents: Number(
+        data?.stats?.criticalIncidents ?? data?.stats?.criticalReports ?? 0
+      ),
 
       activeSOSAlerts: Number(data?.stats?.activeSOSAlerts ?? 0),
       resolvedSOSAlerts: Number(data?.stats?.resolvedSOSAlerts ?? 0),
@@ -140,8 +224,13 @@ export async function getAdminOverviewApi(): Promise<AdminOverview> {
       ),
     },
 
+    openCampusReports,
+    urgentCampusReports,
+
     activeSOSAlerts: (data?.activeSOSAlerts ?? []).map(normalizeSOSAlert),
-    highRiskReports: (data?.highRiskReports ?? []).map(normalizeIncidentReport),
+    highRiskReports: (data?.highRiskReports ?? urgentCampusReports).map(
+      normalizeIncidentReport
+    ),
     activeWalkSafeSessions: (data?.activeWalkSafeSessions ?? []).map(
       normalizeWalkSafeSession
     ),

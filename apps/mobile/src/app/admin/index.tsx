@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,26 +13,24 @@ import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AlertTriangle,
-  BarChart3,
+  ArrowUpCircle,
+  Brain,
+  Building2,
   CheckCircle2,
   ChevronLeft,
-  ChevronRight,
   CircleAlert,
   Clock,
   Database,
-  Footprints,
+  FileCheck2,
   MapPin,
-  Navigation,
-  Phone,
-  RadioTower,
   RefreshCcw,
-  ShieldAlert,
   ShieldCheck,
+  UserCheck,
+  Wrench,
   XCircle,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
-import { AppButton } from "../../components/AppButton";
 import {
   COLORS,
   FONT_SIZE,
@@ -41,15 +40,10 @@ import {
 } from "../../constants/theme";
 import {
   AdminOverview,
-  AdminSOSAlert,
   getAdminOverviewApi,
 } from "../../lib/adminApi";
-import {
-  cancelSOSAlertApi,
-  resolveSOSAlertApi,
-} from "../../lib/sosApi";
-import { IncidentReport } from "../../types/incident";
-import { WalkSafeSession } from "../../types/walkSafe";
+import { updateIncidentReportStatusApi } from "../../lib/incidentApi";
+import { IncidentReport, IncidentStatus } from "../../types/incident";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "Not available";
@@ -62,10 +56,31 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function getRiskColor(level?: string) {
-  if (level === "critical" || level === "high") return COLORS.danger;
-  if (level === "medium") return COLORS.warning;
+function formatStatus(status: string) {
+  return status.replace(/_/g, " ").toUpperCase();
+}
+
+function getPriorityColor(priority?: string, score?: number) {
+  if (priority === "critical" || Number(score ?? 0) >= 85) return COLORS.danger;
+  if (priority === "high" || Number(score ?? 0) >= 70) return COLORS.danger;
+  if (priority === "medium" || Number(score ?? 0) >= 40) return COLORS.warning;
   return COLORS.primary;
+}
+
+function getStatusColor(status: string) {
+  if (status === "resolved" || status === "student_confirmed" || status === "closed") {
+    return COLORS.primary;
+  }
+
+  if (status === "escalated" || status === "rejected") {
+    return COLORS.danger;
+  }
+
+  if (status === "in_progress" || status === "assigned") {
+    return COLORS.warning;
+  }
+
+  return COLORS.info;
 }
 
 function StatCard({
@@ -76,7 +91,7 @@ function StatCard({
 }: {
   label: string;
   value: string | number;
-  icon: React.ReactNode;
+  icon: ReactNode;
   tone?: "primary" | "danger" | "warning" | "info";
 }) {
   const color =
@@ -124,271 +139,268 @@ function SectionTitle({
   );
 }
 
-function QuickActionCard({
+function ActionButton({
   title,
-  description,
   icon,
   onPress,
+  tone = "primary",
 }: {
   title: string;
-  description: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onPress: () => void;
+  tone?: "primary" | "danger" | "warning" | "ghost";
 }) {
+  const backgroundColor =
+    tone === "danger"
+      ? COLORS.dangerLight
+      : tone === "warning"
+        ? COLORS.warningLight
+        : tone === "ghost"
+          ? COLORS.surface
+          : COLORS.primaryLight;
+
+  const color =
+    tone === "danger"
+      ? COLORS.danger
+      : tone === "warning"
+        ? COLORS.warningDark
+        : tone === "ghost"
+          ? COLORS.mutedText
+          : COLORS.primaryDark;
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.quickActionCard,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <View style={styles.quickActionIcon}>{icon}</View>
-
-      <View style={styles.quickActionContent}>
-        <Text style={styles.quickActionTitle}>{title}</Text>
-        <Text style={styles.quickActionText}>{description}</Text>
-      </View>
-
-      <View style={styles.arrowBox}>
-        <ChevronRight size={18} color={COLORS.mutedText} />
-      </View>
+    <Pressable onPress={onPress} style={[styles.actionButton, { backgroundColor }]}>
+      {icon}
+      <Text style={[styles.actionButtonText, { color }]}>{title}</Text>
     </Pressable>
   );
 }
 
-function SOSAlertCard({
-  alert,
-  onResolve,
-  onCancel,
+function EmptyCard({
+  icon,
+  title,
+  text,
 }: {
-  alert: AdminSOSAlert;
-  onResolve: () => void;
-  onCancel: () => void;
+  icon: ReactNode;
+  title: string;
+  text: string;
 }) {
-  const openMap = () => {
-    if (!alert.location) {
-      Alert.alert("No Location", "This SOS alert has no GPS location.");
-      return;
-    }
-
-    Linking.openURL(
-      `https://www.google.com/maps?q=${alert.location.latitude},${alert.location.longitude}`
-    );
-  };
-
-  const callContact = () => {
-    if (!alert.trustedContactPhone) {
-      Alert.alert("No Contact", "No trusted contact phone was saved.");
-      return;
-    }
-
-    Linking.openURL(`tel:${alert.trustedContactPhone}`);
-  };
-
   return (
-    <View style={styles.sosCard}>
-      <View style={styles.sosTopRow}>
-        <View style={styles.sosIcon}>
-          <ShieldAlert size={25} color={COLORS.danger} />
-        </View>
-
-        <View style={styles.sosHeaderText}>
-          <View style={styles.cardTitleRow}>
-            <Text style={styles.sosTitle}>Active SOS Alert</Text>
-
-            <View style={styles.criticalPill}>
-              <Text style={styles.criticalPillText}>Urgent</Text>
-            </View>
-          </View>
-
-          <Text style={styles.sosMeta}>
-            {alert.userName} • {formatDateTime(alert.createdAt)}
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.sosMessage}>{alert.message}</Text>
-
-      <View style={styles.infoRowsBox}>
-        <View style={styles.infoRow}>
-          <MapPin size={16} color={COLORS.mutedText} />
-          <Text style={styles.infoRowText}>
-            {alert.location
-              ? `${alert.location.latitude.toFixed(5)}, ${alert.location.longitude.toFixed(5)}`
-              : "No GPS location"}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Phone size={16} color={COLORS.mutedText} />
-          <Text style={styles.infoRowText}>
-            {alert.trustedContactName || "No trusted contact"}{" "}
-            {alert.trustedContactPhone ? `• ${alert.trustedContactPhone}` : ""}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.actionGrid}>
-        <Pressable onPress={openMap} style={styles.secondaryAction}>
-          <MapPin size={16} color={COLORS.primary} />
-          <Text style={styles.secondaryActionText}>Map</Text>
-        </Pressable>
-
-        <Pressable onPress={callContact} style={styles.secondaryAction}>
-          <Phone size={16} color={COLORS.primary} />
-          <Text style={styles.secondaryActionText}>Call</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.actionGrid}>
-        <Pressable onPress={onResolve} style={styles.resolveAction}>
-          <CheckCircle2 size={16} color={COLORS.white} />
-          <Text style={styles.resolveActionText}>Resolve</Text>
-        </Pressable>
-
-        <Pressable onPress={onCancel} style={styles.cancelAction}>
-          <XCircle size={16} color={COLORS.danger} />
-          <Text style={styles.cancelActionText}>Cancel</Text>
-        </Pressable>
-      </View>
+    <View style={styles.emptyCard}>
+      <View style={styles.emptyIcon}>{icon}</View>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyText}>{text}</Text>
     </View>
   );
 }
 
-function WalkSafeSessionCard({ session }: { session: WalkSafeSession }) {
-  const riskColor = getRiskColor(session.riskLevel);
-
-  const warningCount = session.nearbyRiskWarnings?.length ?? 0;
+function CampusReportCard({
+  report,
+  onUpdateStatus,
+}: {
+  report: IncidentReport;
+  onUpdateStatus: (report: IncidentReport, status: IncidentStatus) => void;
+}) {
+  const priorityColor = getPriorityColor(report.priority, report.priorityScore);
+  const statusColor = getStatusColor(report.status);
 
   const openMap = () => {
-    if (!session.startLocation) {
-      Alert.alert("No Location", "This Walk Safe session has no GPS location.");
+    if (!report.location) {
+      Alert.alert("No GPS Location", "This report does not have GPS coordinates.");
       return;
     }
 
     Linking.openURL(
-      `https://www.google.com/maps?q=${session.startLocation.latitude},${session.startLocation.longitude}`
+      `https://www.google.com/maps?q=${report.location.latitude},${report.location.longitude}`
     );
   };
 
-  const callContact = () => {
-    if (!session.trustedContactPhone) {
-      Alert.alert("No Contact", "No trusted contact phone was saved.");
-      return;
-    }
+  const canAccept =
+    report.status === "submitted" ||
+    report.status === "pending" ||
+    report.status === "ai_reviewed";
 
-    Linking.openURL(`tel:${session.trustedContactPhone}`);
-  };
+  const canStart = report.status === "assigned" || report.status === "escalated";
+  const canResolve = report.status === "in_progress";
+  const canClose =
+    report.status === "resolved" || report.status === "student_confirmed";
+
+  const isClosed = report.status === "closed" || report.status === "rejected";
 
   return (
-    <View style={styles.walkCard}>
-      <View style={styles.walkTopRow}>
-        <View style={styles.walkIcon}>
-          <Footprints size={25} color={COLORS.primary} />
+    <View style={styles.reportCard}>
+      <View style={styles.reportTopRow}>
+        <View style={[styles.reportIcon, { backgroundColor: `${priorityColor}1A` }]}>
+          <CircleAlert size={23} color={priorityColor} />
         </View>
 
-        <View style={styles.walkHeaderText}>
-          <View style={styles.cardTitleRow}>
-            <Text style={styles.walkTitle}>Active Walk Session</Text>
+        <View style={styles.reportHeaderText}>
+          <View style={styles.reportTitleRow}>
+            <Text style={styles.reportTitle}>
+              {report.problemType || report.title}
+            </Text>
 
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Live</Text>
+            <View style={[styles.scorePill, { backgroundColor: `${priorityColor}1A` }]}>
+              <Text style={[styles.scoreText, { color: priorityColor }]}>
+                {report.priorityScore ?? report.aiRiskScore}/100
+              </Text>
             </View>
           </View>
 
-          <Text style={styles.walkMeta}>
-            Started {formatDateTime(session.startedAt)}
+          <Text style={styles.reportMeta}>
+            {report.locationName || "Unknown location"} • {formatDateTime(report.createdAt)}
           </Text>
         </View>
       </View>
 
-      <View style={styles.infoRowsBox}>
+      <View style={styles.pillRow}>
+        <View style={[styles.statusPill, { backgroundColor: `${statusColor}1A` }]}>
+          <Text style={[styles.statusPillText, { color: statusColor }]}>
+            {formatStatus(report.status)}
+          </Text>
+        </View>
+
+        <View style={[styles.statusPill, { backgroundColor: `${priorityColor}1A` }]}>
+          <Text style={[styles.statusPillText, { color: priorityColor }]}>
+            {(report.priority || report.severity || "medium").toUpperCase()}
+          </Text>
+        </View>
+
+        {report.duplicateCount && report.duplicateCount > 1 ? (
+          <View style={styles.duplicatePill}>
+            <Text style={styles.duplicateText}>
+              {report.duplicateCount} similar reports
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text style={styles.reportDescription}>{report.description}</Text>
+
+      <View style={styles.infoBox}>
         <View style={styles.infoRow}>
-          <Navigation size={16} color={COLORS.mutedText} />
+          <Building2 size={16} color={COLORS.mutedText} />
           <Text style={styles.infoRowText}>
-            Destination: {session.destinationName || "Not provided"}
+            Unit: {report.assignedUnit || report.aiSuggestedUnit || "Not assigned"}
+          </Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <MapPin size={16} color={COLORS.mutedText} />
+          <Text style={styles.infoRowText}>
+            {report.buildingName || report.locationName || "No building"}{" "}
+            {report.roomNumber ? `• Room ${report.roomNumber}` : ""}
           </Text>
         </View>
 
         <View style={styles.infoRow}>
           <Clock size={16} color={COLORS.mutedText} />
           <Text style={styles.infoRowText}>
-            Expected arrival: {formatDateTime(session.expectedArrivalAt)}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Phone size={16} color={COLORS.mutedText} />
-          <Text style={styles.infoRowText}>
-            {session.trustedContactName || "No contact"}{" "}
-            {session.trustedContactPhone ? `• ${session.trustedContactPhone}` : ""}
+            Assigned: {formatDateTime(report.assignedAt)}
           </Text>
         </View>
       </View>
-
-      <View style={[styles.riskStrip, { backgroundColor: `${riskColor}1A` }]}>
-        <AlertTriangle size={17} color={riskColor} />
-
-        <Text style={[styles.riskStripText, { color: riskColor }]}>
-          {session.riskLevel.toUpperCase()} RISK • {warningCount} nearby warning
-          {warningCount === 1 ? "" : "s"}
-        </Text>
-      </View>
-
-      <View style={styles.actionGrid}>
-        <Pressable onPress={openMap} style={styles.secondaryAction}>
-          <MapPin size={16} color={COLORS.primary} />
-          <Text style={styles.secondaryActionText}>Open Map</Text>
-        </Pressable>
-
-        <Pressable onPress={callContact} style={styles.secondaryAction}>
-          <Phone size={16} color={COLORS.primary} />
-          <Text style={styles.secondaryActionText}>Call Contact</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function HighRiskReportCard({ report }: { report: IncidentReport }) {
-  const isCritical = report.aiRiskScore >= 85;
-  const color = isCritical ? COLORS.danger : COLORS.warning;
-  const lightColor = isCritical ? COLORS.dangerLight : COLORS.warningLight;
-
-  return (
-    <View style={styles.reportCard}>
-      <View style={styles.reportHeader}>
-        <View style={[styles.reportIcon, { backgroundColor: lightColor }]}>
-          <CircleAlert size={22} color={color} />
-        </View>
-
-        <View style={styles.reportHeaderText}>
-          <View style={styles.cardTitleRow}>
-            <Text style={styles.reportTitle}>{report.title}</Text>
-
-            <View style={[styles.scorePill, { backgroundColor: lightColor }]}>
-              <Text style={[styles.scoreText, { color }]}>
-                {report.aiRiskScore}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.reportMeta}>
-            {report.locationName || "Unknown location"}
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.reportDescription}>{report.description}</Text>
 
       {report.aiSummary ? (
         <View style={styles.aiBox}>
-          <Database size={16} color={COLORS.primary} />
+          <Brain size={17} color={COLORS.primary} />
           <Text style={styles.aiText}>{report.aiSummary}</Text>
         </View>
       ) : null}
+
+      {report.aiRecommendedAction ? (
+        <View style={styles.actionRecommendationBox}>
+          <Wrench size={17} color={COLORS.warningDark} />
+          <Text style={styles.actionRecommendationText}>
+            {report.aiRecommendedAction}
+          </Text>
+        </View>
+      ) : null}
+
+      {report.statusHistory?.length ? (
+        <View style={styles.historyBox}>
+          <Text style={styles.historyTitle}>Latest activity</Text>
+
+          {report.statusHistory
+            .slice(-3)
+            .reverse()
+            .map((item, index) => (
+              <View key={`${item.status}-${index}`} style={styles.historyRow}>
+                <View style={styles.historyDot} />
+                <View style={styles.historyContent}>
+                  <Text style={styles.historyStatus}>
+                    {formatStatus(item.status)}
+                  </Text>
+                  <Text style={styles.historyNote}>
+                    {item.note || "Status updated"} • {item.actorName}
+                  </Text>
+                </View>
+              </View>
+            ))}
+        </View>
+      ) : null}
+
+      <View style={styles.reportActions}>
+        {report.location ? (
+          <ActionButton
+            title="Map"
+            tone="ghost"
+            icon={<MapPin size={16} color={COLORS.mutedText} />}
+            onPress={openMap}
+          />
+        ) : null}
+
+        {canAccept ? (
+          <ActionButton
+            title="Accept"
+            icon={<UserCheck size={16} color={COLORS.primaryDark} />}
+            onPress={() => onUpdateStatus(report, "assigned")}
+          />
+        ) : null}
+
+        {canStart ? (
+          <ActionButton
+            title="Start Work"
+            tone="warning"
+            icon={<Wrench size={16} color={COLORS.warningDark} />}
+            onPress={() => onUpdateStatus(report, "in_progress")}
+          />
+        ) : null}
+
+        {canResolve ? (
+          <ActionButton
+            title="Resolve"
+            icon={<CheckCircle2 size={16} color={COLORS.primaryDark} />}
+            onPress={() => onUpdateStatus(report, "resolved")}
+          />
+        ) : null}
+
+        {canClose ? (
+          <ActionButton
+            title="Close"
+            icon={<FileCheck2 size={16} color={COLORS.primaryDark} />}
+            onPress={() => onUpdateStatus(report, "closed")}
+          />
+        ) : null}
+
+        {!isClosed ? (
+          <ActionButton
+            title="Escalate"
+            tone="danger"
+            icon={<ArrowUpCircle size={16} color={COLORS.danger} />}
+            onPress={() => onUpdateStatus(report, "escalated")}
+          />
+        ) : null}
+
+        {!isClosed ? (
+          <ActionButton
+            title="Reject"
+            tone="ghost"
+            icon={<XCircle size={16} color={COLORS.mutedText} />}
+            onPress={() => onUpdateStatus(report, "rejected")}
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -398,6 +410,7 @@ export default function AdminDashboardScreen() {
 
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -409,7 +422,7 @@ export default function AdminDashboardScreen() {
     } catch (error) {
       Alert.alert(
         "Admin Sync Failed",
-        "Could not load admin dashboard data from the backend."
+        "Could not load authority dashboard data from the backend."
       );
     } finally {
       setLoading(false);
@@ -422,28 +435,74 @@ export default function AdminDashboardScreen() {
     }, [fetchOverview])
   );
 
-  const handleResolveSOS = (alertId: string) => {
-    Alert.alert("Resolve SOS", "Mark this SOS alert as resolved?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Resolve",
-        onPress: async () => {
-          await resolveSOSAlertApi(alertId);
-          await fetchOverview();
-        },
-      },
-    ]);
-  };
+  const handleUpdateReportStatus = (
+    report: IncidentReport,
+    status: IncidentStatus
+  ) => {
+    const actionText =
+      status === "assigned"
+        ? "accept and assign this report"
+        : status === "in_progress"
+          ? "start work on this report"
+          : status === "resolved"
+            ? "mark this report as resolved"
+            : status === "closed"
+              ? "close this report"
+              : status === "escalated"
+                ? "escalate this report"
+                : status === "rejected"
+                  ? "reject this report"
+                  : "update this report";
 
-  const handleCancelSOS = (alertId: string) => {
-    Alert.alert("Cancel SOS", "Cancel this SOS alert?", [
-      { text: "Keep Active", style: "cancel" },
+    Alert.alert("Update Report", `Do you want to ${actionText}?`, [
       {
-        text: "Cancel SOS",
-        style: "destructive",
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Continue",
+        style: status === "rejected" ? "destructive" : "default",
         onPress: async () => {
-          await cancelSOSAlertApi(alertId);
-          await fetchOverview();
+          try {
+            setUpdatingReportId(report.id);
+
+            await updateIncidentReportStatusApi(report.id, {
+              status,
+              actorName: "Authority Officer",
+              actorRole: "authority",
+              assignedToName:
+                status === "assigned"
+                  ? report.assignedToName || "Assigned responder"
+                  : report.assignedToName,
+              resolutionSummary:
+                status === "resolved"
+                  ? "Authority marked the reported issue as resolved."
+                  : report.resolutionSummary,
+              note:
+                status === "assigned"
+                  ? "Authority accepted the AI-routed report and assigned it for action."
+                  : status === "in_progress"
+                    ? "Responder has started working on this campus issue."
+                    : status === "resolved"
+                      ? "Authority has resolved the reported issue."
+                      : status === "closed"
+                        ? "Case has been closed after resolution."
+                        : status === "escalated"
+                          ? "Case escalated because it needs higher attention."
+                          : status === "rejected"
+                            ? "Report rejected after authority review."
+                            : "Report status updated.",
+            });
+
+            await fetchOverview();
+          } catch (error) {
+            Alert.alert(
+              "Update Failed",
+              "Could not update the report status. Check that your backend is running."
+            );
+          } finally {
+            setUpdatingReportId(null);
+          }
         },
       },
     ]);
@@ -459,8 +518,8 @@ export default function AdminDashboardScreen() {
         </Pressable>
 
         <View style={styles.headerText}>
-          <Text style={styles.overline}>Security monitoring</Text>
-          <Text style={styles.headerTitle}>Admin Dashboard</Text>
+          <Text style={styles.overline}>University of Ghana</Text>
+          <Text style={styles.headerTitle}>Authority Dashboard</Text>
         </View>
 
         <Pressable onPress={fetchOverview} style={styles.refreshButton}>
@@ -476,143 +535,146 @@ export default function AdminDashboardScreen() {
         <View style={styles.heroTopRow}>
           <View style={styles.heroIconOuter}>
             <View style={styles.heroIcon}>
-              <ShieldAlert size={34} color={COLORS.danger} />
+              <Database size={34} color={COLORS.primary} />
             </View>
           </View>
 
           <View style={styles.demoPill}>
-            <Text style={styles.demoPillText}>Demo Mode</Text>
+            <Text style={styles.demoPillText}>SafeCampus AI</Text>
           </View>
         </View>
 
-        <Text style={styles.heroTitle}>Campus Safety Control</Text>
+        <Text style={styles.heroTitle}>Campus Issue Response</Text>
 
         <Text style={styles.heroText}>
-          Monitor active SOS alerts, live walking sessions, and high-risk
-          incident reports from the SafeWalk AI database.
+          Review AI-routed campus reports, accept cases, begin action, resolve
+          problems, close completed cases, and escalate unattended issues.
         </Text>
       </View>
 
       {!overview && loading ? (
         <View style={styles.loadingCard}>
           <ActivityIndicator color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading admin dashboard...</Text>
+          <Text style={styles.loadingText}>Loading authority dashboard...</Text>
+        </View>
+      ) : null}
+
+      {updatingReportId ? (
+        <View style={styles.updatingCard}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.updatingText}>Updating report status...</Text>
         </View>
       ) : null}
 
       {stats ? (
         <View style={styles.statsGrid}>
           <StatCard
-            label="Active SOS"
-            value={stats.activeSOSAlerts}
-            tone="danger"
-            icon={<ShieldAlert size={21} color={COLORS.danger} />}
-          />
-
-          <StatCard
-            label="Incidents"
-            value={stats.totalIncidents}
+            label="Total Reports"
+            value={stats.totalReports}
             tone="primary"
             icon={<Database size={21} color={COLORS.primary} />}
           />
 
           <StatCard
-            label="High Risk"
-            value={stats.highRiskIncidents}
+            label="Open Cases"
+            value={stats.openReports}
+            tone="info"
+            icon={<CircleAlert size={21} color={COLORS.info} />}
+          />
+
+          <StatCard
+            label="In Progress"
+            value={stats.inProgressReports}
             tone="warning"
-            icon={<AlertTriangle size={21} color={COLORS.warning} />}
+            icon={<Wrench size={21} color={COLORS.warning} />}
+          />
+
+          <StatCard
+            label="Resolved"
+            value={stats.resolvedReports}
+            tone="primary"
+            icon={<ShieldCheck size={21} color={COLORS.primary} />}
+          />
+
+          <StatCard
+            label="Escalated"
+            value={stats.escalatedReports}
+            tone="danger"
+            icon={<ArrowUpCircle size={21} color={COLORS.danger} />}
           />
 
           <StatCard
             label="Critical"
-            value={stats.criticalIncidents}
+            value={stats.criticalReports}
             tone="danger"
-            icon={<CircleAlert size={21} color={COLORS.danger} />}
-          />
-
-          <StatCard
-            label="Active Walks"
-            value={stats.activeWalkSafeSessions}
-            tone="info"
-            icon={<Footprints size={21} color={COLORS.info} />}
+            icon={<AlertTriangle size={21} color={COLORS.danger} />}
           />
         </View>
       ) : null}
 
-      <QuickActionCard
-        title="Live Monitoring Center"
-        description="Open the live map view for students currently sharing movement."
-        icon={<RadioTower size={24} color={COLORS.primary} />}
-        onPress={() => router.push("/admin/live-shares")}
-      />
-
       <View style={styles.section}>
         <SectionTitle
-          title="Active SOS Alerts"
-          subtitle="Emergency alerts that require immediate attention."
+          title="Open Campus Reports"
+          subtitle="AI-classified reports waiting for authority action."
         />
 
-        {overview?.activeSOSAlerts.length ? (
-          overview.activeSOSAlerts.map((alert) => (
-            <SOSAlertCard
-              key={alert.id}
-              alert={alert}
-              onResolve={() => handleResolveSOS(alert.id)}
-              onCancel={() => handleCancelSOS(alert.id)}
-            />
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <ShieldCheck size={30} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>No active SOS alerts</Text>
-            <Text style={styles.emptyText}>
-              When a student triggers SOS, the alert will appear here.
-            </Text>
+        {overview?.openCampusReports.length ? (
+          <View style={styles.reportList}>
+            {overview.openCampusReports.map((report) => (
+              <CampusReportCard
+                key={report.id}
+                report={report}
+                onUpdateStatus={handleUpdateReportStatus}
+              />
+            ))}
           </View>
+        ) : (
+          <EmptyCard
+            icon={<ShieldCheck size={34} color={COLORS.primary} />}
+            title="No open campus reports"
+            text="When students submit campus issues, they will appear here for authority action."
+          />
         )}
       </View>
 
       <View style={styles.section}>
         <SectionTitle
-          title="Active Walk Sessions"
-          subtitle="Students currently using monitored walking mode."
+          title="Urgent / Critical Reports"
+          subtitle="High-priority issues that may need faster response."
         />
 
-        {overview?.activeWalkSafeSessions.length ? (
-          overview.activeWalkSafeSessions.map((session) => (
-            <WalkSafeSessionCard key={session.id} session={session} />
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <Footprints size={30} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>No active Walk Safe sessions</Text>
-            <Text style={styles.emptyText}>
-              When a student starts Walk Safe mode, the session will appear here.
-            </Text>
+        {overview?.urgentCampusReports.length ? (
+          <View style={styles.reportList}>
+            {overview.urgentCampusReports.map((report) => (
+              <CampusReportCard
+                key={`urgent-${report.id}`}
+                report={report}
+                onUpdateStatus={handleUpdateReportStatus}
+              />
+            ))}
           </View>
+        ) : (
+          <EmptyCard
+            icon={<CheckCircle2 size={34} color={COLORS.primary} />}
+            title="No urgent reports"
+            text="Critical campus issues such as fire, medical emergencies, or electrical hazards will appear here."
+          />
         )}
       </View>
 
-      <View style={styles.section}>
-        <SectionTitle
-          title="High-Risk Reports"
-          subtitle="Incident reports with strong danger signals."
-        />
+      <View style={styles.infoCard}>
+        <View style={styles.infoIcon}>
+          <Brain size={22} color={COLORS.primary} />
+        </View>
 
-        {overview?.highRiskReports.length ? (
-          overview.highRiskReports.map((report) => (
-            <HighRiskReportCard key={report.id} report={report} />
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <CircleAlert size={30} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>No high-risk reports</Text>
-            <Text style={styles.emptyText}>
-              High-risk incident reports will appear here after students submit
-              reports with location data.
-            </Text>
-          </View>
-        )}
+        <View style={styles.infoTextBox}>
+          <Text style={styles.infoTitle}>How the system solves the problem</Text>
+          <Text style={styles.infoText}>
+            The system does not stop after receiving a report. It creates a
+            case, assigns it to a responsible unit, tracks progress, stores
+            authority actions, and escalates unresolved issues.
+          </Text>
+        </View>
       </View>
 
       <View style={{ height: insets.bottom + 130 }} />
@@ -689,18 +751,18 @@ const styles = StyleSheet.create({
     width: 104,
     height: 104,
     borderRadius: 52,
-    backgroundColor: "rgba(220, 38, 38, 0.07)",
+    backgroundColor: "rgba(5, 150, 105, 0.08)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.10)",
+    borderColor: "rgba(5, 150, 105, 0.12)",
   },
 
   heroIcon: {
     width: 76,
     height: 76,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
+    backgroundColor: COLORS.primaryLight,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -751,6 +813,22 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  updatingCard: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  updatingText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primaryDark,
+    fontWeight: "800",
+  },
+
   statsGrid: {
     marginTop: SPACING.xl,
     flexDirection: "row",
@@ -790,60 +868,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  quickActionCard: {
-    marginTop: SPACING.xl,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-    ...SHADOWS.soft,
-  },
-
-  quickActionIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  quickActionContent: {
-    flex: 1,
-  },
-
-  quickActionTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  quickActionText: {
-    marginTop: 3,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-    lineHeight: 18,
-  },
-
-  arrowBox: {
-    width: 34,
-    height: 34,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  cardPressed: {
-    transform: [{ scale: 0.985 }],
-    opacity: 0.92,
-  },
-
   section: {
     marginTop: SPACING.xl,
   },
@@ -866,79 +890,113 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  sosCard: {
+  reportList: {
+    gap: SPACING.md,
+  },
+
+  reportCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.18)",
-    marginBottom: SPACING.md,
+    borderColor: COLORS.border,
     ...SHADOWS.soft,
   },
 
-  sosTopRow: {
+  reportTopRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
   },
 
-  sosIcon: {
+  reportIcon: {
     width: 52,
     height: 52,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  sosHeaderText: {
+  reportHeaderText: {
     flex: 1,
   },
 
-  cardTitleRow: {
+  reportTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
   },
 
-  sosTitle: {
+  reportTitle: {
     flex: 1,
     fontSize: FONT_SIZE.md,
     fontWeight: "900",
-    color: COLORS.danger,
+    color: COLORS.text,
   },
 
-  sosMeta: {
-    marginTop: 3,
+  reportMeta: {
+    marginTop: 4,
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
     fontWeight: "700",
+    lineHeight: 18,
   },
 
-  criticalPill: {
-    backgroundColor: COLORS.dangerLight,
+  scorePill: {
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
   },
 
-  criticalPillText: {
-    color: COLORS.danger,
+  scoreText: {
     fontSize: 10,
     fontWeight: "900",
-    textTransform: "uppercase",
   },
 
-  sosMessage: {
+  pillRow: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  statusPill: {
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+
+  statusPillText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+  },
+
+  duplicatePill: {
+    backgroundColor: COLORS.infoLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+
+  duplicateText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+    color: COLORS.info,
+  },
+
+  reportDescription: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZE.sm,
     color: COLORS.text,
-    lineHeight: 20,
+    lineHeight: 21,
     fontWeight: "700",
   },
 
-  infoRowsBox: {
+  infoBox: {
     marginTop: SPACING.md,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
     gap: SPACING.sm,
   },
 
@@ -956,217 +1014,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  actionGrid: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    gap: SPACING.sm,
-  },
-
-  secondaryAction: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-    borderWidth: 1,
-    borderColor: "rgba(5, 150, 105, 0.16)",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
-
-  secondaryActionText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: "900",
-    color: COLORS.primaryDark,
-  },
-
-  resolveAction: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
-
-  resolveActionText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: "900",
-    color: COLORS.white,
-  },
-
-  cancelAction: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
-    borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.18)",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
-
-  cancelActionText: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: "900",
-    color: COLORS.danger,
-  },
-
-  walkCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: "rgba(5, 150, 105, 0.18)",
-    marginBottom: SPACING.md,
-    ...SHADOWS.soft,
-  },
-
-  walkTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  walkIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  walkHeaderText: {
-    flex: 1,
-  },
-
-  walkTitle: {
-    flex: 1,
-    fontSize: FONT_SIZE.md,
-    fontWeight: "900",
-    color: COLORS.primaryDark,
-  },
-
-  walkMeta: {
-    marginTop: 3,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-  },
-
-  livePill: {
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primary,
-  },
-
-  liveText: {
-    color: COLORS.primaryDark,
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-
-  riskStrip: {
-    marginTop: SPACING.md,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-  },
-
-  riskStripText: {
-    flex: 1,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "900",
-    lineHeight: 18,
-  },
-
-  reportCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: SPACING.md,
-    ...SHADOWS.soft,
-  },
-
-  reportHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  reportIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: RADIUS.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  reportHeaderText: {
-    flex: 1,
-  },
-
-  reportTitle: {
-    flex: 1,
-    fontSize: FONT_SIZE.md,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  reportMeta: {
-    marginTop: 3,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-  },
-
-  scorePill: {
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-
-  scoreText: {
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  reportDescription: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
-    lineHeight: 20,
-    fontWeight: "700",
-  },
-
   aiBox: {
     marginTop: SPACING.md,
     backgroundColor: COLORS.primaryLight,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     flexDirection: "row",
+    alignItems: "flex-start",
     gap: SPACING.sm,
   },
 
@@ -1176,6 +1030,95 @@ const styles = StyleSheet.create({
     color: COLORS.primaryDark,
     fontWeight: "700",
     lineHeight: 18,
+  },
+
+  actionRecommendationBox: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.warningLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  actionRecommendationText: {
+    flex: 1,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.warningDark,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+
+  historyBox: {
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+
+  historyTitle: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+
+  historyRow: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+  },
+
+  historyDot: {
+    marginTop: 5,
+    width: 8,
+    height: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+  },
+
+  historyContent: {
+    flex: 1,
+  },
+
+  historyStatus: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.text,
+    fontWeight: "900",
+  },
+
+  historyNote: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 17,
+  },
+
+  reportActions: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  actionButton: {
+    minHeight: 42,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  actionButtonText: {
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
   },
 
   emptyCard: {
@@ -1188,8 +1131,17 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
+  emptyIcon: {
+    width: 74,
+    height: 74,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.md,
+  },
+
   emptyTitle: {
-    marginTop: SPACING.sm,
     fontSize: FONT_SIZE.md,
     fontWeight: "900",
     color: COLORS.text,
@@ -1202,5 +1154,44 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
     fontWeight: "700",
+  },
+
+  infoCard: {
+    marginTop: SPACING.xl,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(5, 150, 105, 0.18)",
+  },
+
+  infoIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  infoTextBox: {
+    flex: 1,
+  },
+
+  infoTitle: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.primaryDark,
+    fontWeight: "900",
+  },
+
+  infoText: {
+    marginTop: SPACING.xs,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primaryDark,
+    fontWeight: "700",
+    lineHeight: 20,
   },
 });

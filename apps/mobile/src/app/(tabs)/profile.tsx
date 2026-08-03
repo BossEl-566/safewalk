@@ -1,19 +1,23 @@
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  ArrowRight,
   BellRing,
-  ChevronRight,
+  Building2,
+  CheckCircle2,
+  ClipboardList,
   ContactRound,
-  History,
-  RadioTower,
+  Database,
+  FileClock,
+  Map,
   RefreshCcw,
   Settings,
-  Share2,
   ShieldAlert,
-  ShieldCheck,
+  Sparkles,
   UserRound,
+  Wrench,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -24,32 +28,33 @@ import {
   SHADOWS,
   SPACING,
 } from "../../constants/theme";
+import { useContactStore } from "../../store/contactStore";
+import { useIncidentStore } from "../../store/incidentStore";
 
-type ProfileMenuCardProps = {
+type MenuCardProps = {
   title: string;
   description: string;
-  badge?: string;
   icon: React.ReactNode;
   onPress: () => void;
-  variant?: "primary" | "danger" | "warning" | "info";
+  tone?: "primary" | "danger" | "warning" | "info";
 };
 
-function getVariantColors(variant: ProfileMenuCardProps["variant"]) {
-  if (variant === "danger") {
+function getToneColors(tone: MenuCardProps["tone"] = "primary") {
+  if (tone === "danger") {
     return {
       color: COLORS.danger,
       lightColor: COLORS.dangerLight,
     };
   }
 
-  if (variant === "warning") {
+  if (tone === "warning") {
     return {
       color: COLORS.warning,
       lightColor: COLORS.warningLight,
     };
   }
 
-  if (variant === "info") {
+  if (tone === "info") {
     return {
       color: COLORS.info,
       lightColor: COLORS.infoLight,
@@ -62,63 +67,51 @@ function getVariantColors(variant: ProfileMenuCardProps["variant"]) {
   };
 }
 
-function ProfileMenuCard({
+function MenuCard({
   title,
   description,
-  badge,
   icon,
   onPress,
-  variant = "primary",
-}: ProfileMenuCardProps) {
-  const { color, lightColor } = getVariantColors(variant);
+  tone = "primary",
+}: MenuCardProps) {
+  const { color, lightColor } = getToneColors(tone);
 
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.menuCard,
-        pressed && styles.menuCardPressed,
-      ]}
+      style={({ pressed }) => [styles.menuCard, pressed && styles.cardPressed]}
     >
       <View style={[styles.menuIcon, { backgroundColor: lightColor }]}>
         {icon}
       </View>
 
-      <View style={styles.menuContent}>
-        <View style={styles.menuTitleRow}>
-          <Text style={styles.menuTitle}>{title}</Text>
-
-          {badge ? (
-            <View style={[styles.badge, { backgroundColor: lightColor }]}>
-              <Text style={[styles.badgeText, { color }]}>{badge}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <Text style={styles.menuText}>{description}</Text>
+      <View style={styles.menuTextBox}>
+        <Text style={styles.menuTitle}>{title}</Text>
+        <Text style={styles.menuDescription}>{description}</Text>
       </View>
 
-      <View style={styles.arrowBox}>
-        <ChevronRight size={18} color={COLORS.mutedText} />
+      <View style={styles.menuArrow}>
+        <ArrowRight size={18} color={color} />
       </View>
     </Pressable>
   );
 }
 
 function StatusCard({
-  title,
+  label,
   value,
-  icon,
+  tone = "primary",
 }: {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  tone?: "primary" | "danger" | "warning" | "info";
 }) {
+  const { color } = getToneColors(tone);
+
   return (
     <View style={styles.statusCard}>
-      <View style={styles.statusIcon}>{icon}</View>
-      <Text style={styles.statusValue}>{value}</Text>
-      <Text style={styles.statusLabel}>{title}</Text>
+      <Text style={[styles.statusValue, { color }]}>{value}</Text>
+      <Text style={styles.statusLabel}>{label}</Text>
     </View>
   );
 }
@@ -126,19 +119,40 @@ function StatusCard({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
 
+  const contacts = useContactStore((state) => state.contacts);
+  const reports = useIncidentStore((state) => state.reports);
+
+  const openReports = reports.filter((report) =>
+    [
+      "pending",
+      "submitted",
+      "ai_reviewed",
+      "assigned",
+      "in_progress",
+      "escalated",
+    ].includes(report.status)
+  ).length;
+
+  const resolvedReports = reports.filter((report) =>
+    ["resolved", "student_confirmed", "closed"].includes(report.status)
+  ).length;
+
+  const criticalReports = reports.filter(
+    (report) =>
+      report.priority === "critical" ||
+      Number(report.priorityScore ?? report.aiRiskScore ?? 0) >= 85
+  ).length;
+
   const handleRunOnboardingAgain = async () => {
     try {
-      /**
-       * These remove common onboarding flags.
-       * Even if one key does not exist, it will not break the app.
-       */
       await AsyncStorage.multiRemove([
         "safewalk-onboarding-complete",
+        "safecampus-onboarding-complete",
         "onboarding-complete",
         "hasCompletedOnboarding",
       ]);
 
-      router.replace("/onboarding");
+      router.replace("/onboarding" as any);
     } catch (error) {
       Alert.alert(
         "Onboarding Error",
@@ -150,7 +164,7 @@ export default function ProfileScreen() {
   const handleResetDemoApp = () => {
     Alert.alert(
       "Reset Demo App?",
-      "This will clear saved demo data on this phone, including active trips, saved tokens, contacts, and onboarding status. Use this before presenting from fresh.",
+      "This will clear saved demo data on this phone, including local reports, contacts, active sessions, and onboarding status. Backend MongoDB reports will remain unless deleted from the backend.",
       [
         {
           text: "Cancel",
@@ -161,19 +175,15 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              /**
-               * This clears the local saved app data.
-               * It is useful for a clean project demo.
-               */
               await AsyncStorage.clear();
 
               Alert.alert(
                 "Demo Reset Complete",
-                "The app has been reset. You can now start the onboarding demo again.",
+                "The local app data has been reset. Start onboarding again.",
                 [
                   {
                     text: "Start Onboarding",
-                    onPress: () => router.replace("/onboarding"),
+                    onPress: () => router.replace("/onboarding" as any),
                   },
                 ]
               );
@@ -192,149 +202,176 @@ export default function ProfileScreen() {
   return (
     <Screen scroll>
       <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <View style={styles.profileAvatarOuter}>
-            <View style={styles.profileAvatar}>
-              <UserRound size={42} color={COLORS.primary} />
-            </View>
-          </View>
-
-          <View style={styles.protectedPill}>
-            <ShieldCheck size={15} color={COLORS.primaryDark} />
-            <Text style={styles.protectedText}>Protected</Text>
+        <View style={styles.avatarOuter}>
+          <View style={styles.avatar}>
+            <UserRound size={42} color={COLORS.primary} />
           </View>
         </View>
 
-        <Text style={styles.title}>Safety Profile</Text>
+        <Text style={styles.heroTitle}>SafeCampus AI Profile</Text>
 
-        <Text style={styles.subtitle}>
-          Manage your trusted contacts, live monitoring tools, safety
-          preferences, onboarding demo, and admin controls.
+        <Text style={styles.heroSubtitle}>
+          University of Ghana campus issue reporting, response tracking, and
+          authority workflow demo.
         </Text>
 
-        <View style={styles.heroDivider} />
-
-        <View style={styles.heroInfoRow}>
-          <View style={styles.heroInfoItem}>
-            <ContactRound size={18} color={COLORS.primary} />
-            <Text style={styles.heroInfoText}>Contacts</Text>
+        <View style={styles.badgeRow}>
+          <View style={styles.badge}>
+            <Sparkles size={14} color={COLORS.primaryDark} />
+            <Text style={styles.badgeText}>AI Routing</Text>
           </View>
 
-          <View style={styles.heroInfoItem}>
-            <BellRing size={18} color={COLORS.warning} />
-            <Text style={styles.heroInfoText}>Alerts</Text>
-          </View>
-
-          <View style={styles.heroInfoItem}>
-            <RadioTower size={18} color={COLORS.info} />
-            <Text style={styles.heroInfoText}>Monitoring</Text>
+          <View style={styles.badge}>
+            <Building2 size={14} color={COLORS.primaryDark} />
+            <Text style={styles.badgeText}>UG Legon</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.statusRow}>
-        <StatusCard
-          title="Demo access"
-          value="Open"
-          icon={<ShieldCheck size={20} color={COLORS.primary} />}
-        />
-
-        <StatusCard
-          title="Monitoring"
-          value="Live"
-          icon={<RadioTower size={20} color={COLORS.info} />}
-        />
+        <StatusCard label="Local Reports" value={reports.length} />
+        <StatusCard label="Open" value={openReports} tone="info" />
       </View>
 
-      <View style={styles.sectionHeaderBox}>
-        <Text style={styles.sectionTitle}>Demo setup</Text>
+      <View style={styles.statusRow}>
+        <StatusCard label="Resolved" value={resolvedReports} />
+        <StatusCard label="Critical" value={criticalReports} tone="danger" />
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Student Tools</Text>
         <Text style={styles.sectionSubtitle}>
-          Use these tools when you want to present the app from the beginning.
+          Report problems, track issue locations, and manage emergency contacts.
         </Text>
       </View>
 
-      <View style={styles.menuSection}>
-        <ProfileMenuCard
+      <View style={styles.menuList}>
+        <MenuCard
+          title="Report Campus Issue"
+          description="Submit a campus issue with location, description, and photo evidence."
+          icon={<ClipboardList size={23} color={COLORS.primary} />}
+          onPress={() => router.push("/(tabs)/report")}
+        />
+
+        <MenuCard
+          title="Campus Issue Map"
+          description="View open, urgent, resolved, and mapped campus reports."
+          tone="info"
+          icon={<Map size={23} color={COLORS.info} />}
+          onPress={() => router.push("/(tabs)/risk-map")}
+        />
+
+        <MenuCard
+          title="Emergency Contacts"
+          description="Manage contacts who receive SOS location alerts."
+          tone="danger"
+          icon={<ContactRound size={23} color={COLORS.danger} />}
+          onPress={() => router.push("/contacts")}
+        />
+
+        <MenuCard
+          title="Activity History"
+          description="Review previous activities and report history."
+          tone="warning"
+          icon={<FileClock size={23} color={COLORS.warning} />}
+          onPress={() => router.push("/activity")}
+        />
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Authority & Demo Tools</Text>
+        <Text style={styles.sectionSubtitle}>
+          Use these features to demonstrate what happens after a report is
+          submitted.
+        </Text>
+      </View>
+
+      <View style={styles.menuList}>
+        <MenuCard
+          title="Authority Dashboard"
+          description="Accept, start work, resolve with finished-work photo, close, or escalate cases."
+          icon={<Wrench size={23} color={COLORS.primary} />}
+          onPress={() => router.push("/admin")}
+        />
+
+        <MenuCard
+          title="Live Monitoring Center"
+          description="Optional safety monitoring module retained from the earlier SafeWalk version."
+          tone="info"
+          icon={<Database size={23} color={COLORS.info} />}
+          onPress={() => router.push("/admin/live-shares")}
+        />
+
+        <MenuCard
           title="Run Onboarding Again"
-          description="Open the onboarding screens again without clearing all app data."
-          badge="Demo"
-          variant="info"
-          icon={<ShieldCheck size={25} color={COLORS.info} />}
+          description="Restart onboarding when preparing for a fresh presentation demo."
+          tone="warning"
+          icon={<RefreshCcw size={23} color={COLORS.warning} />}
           onPress={handleRunOnboardingAgain}
         />
 
-        <ProfileMenuCard
+        <MenuCard
           title="Reset Demo & Start Fresh"
-          description="Clear local demo data and restart from onboarding like a new user."
-          badge="Reset"
-          variant="danger"
-          icon={<RefreshCcw size={25} color={COLORS.danger} />}
+          description="Clear local demo data on this phone before presenting."
+          tone="danger"
+          icon={<ShieldAlert size={23} color={COLORS.danger} />}
           onPress={handleResetDemoApp}
         />
       </View>
 
-      <View style={styles.sectionHeaderBox}>
-        <Text style={styles.sectionTitle}>Profile tools</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>System Features</Text>
         <Text style={styles.sectionSubtitle}>
-          Open and manage your SafeWalk AI safety controls.
+          These points help you explain the project during presentation.
         </Text>
       </View>
 
-      <View style={styles.menuSection}>
-        <ProfileMenuCard
-          title="Emergency Contacts"
-          description="Manage people who receive SOS and Walk Safe alerts."
-          badge="Safety"
-          variant="primary"
-          icon={<ContactRound size={25} color={COLORS.primary} />}
-          onPress={() => router.push("/contacts")}
-        />
+      <View style={styles.featureGrid}>
+        <View style={styles.featureCard}>
+          <ClipboardList size={24} color={COLORS.primary} />
+          <Text style={styles.featureTitle}>Structured Reports</Text>
+          <Text style={styles.featureText}>
+            Students submit exact location, date, description, and photo
+            evidence.
+          </Text>
+        </View>
 
-        <ProfileMenuCard
-          title="Monitor Friend"
-          description="Use a live share token to monitor a friend’s Walk Home movement."
-          badge="Live"
-          variant="info"
-          icon={<Share2 size={25} color={COLORS.info} />}
-          onPress={() => router.push("/live-share")}
-        />
+        <View style={styles.featureCard}>
+          <Sparkles size={24} color={COLORS.primary} />
+          <Text style={styles.featureTitle}>AI Classification</Text>
+          <Text style={styles.featureText}>
+            The system detects issue type, priority score, and responsible unit.
+          </Text>
+        </View>
 
-        <ProfileMenuCard
-          title="Activity History"
-          description="View past SOS alerts, Walk Safe sessions, and incident reports."
-          variant="warning"
-          icon={<History size={25} color={COLORS.warning} />}
-          onPress={() => router.push("/activity")}
-        />
+        <View style={styles.featureCard}>
+          <Wrench size={24} color={COLORS.primary} />
+          <Text style={styles.featureTitle}>Authority Workflow</Text>
+          <Text style={styles.featureText}>
+            Authorities accept, start work, resolve, close, or escalate cases.
+          </Text>
+        </View>
 
-        <ProfileMenuCard
-          title="Safety Settings"
-          description="Configure emergency numbers, Walk Safe defaults, and privacy options."
-          variant="primary"
-          icon={<Settings size={25} color={COLORS.primary} />}
-          onPress={() => router.push("/settings")}
-        />
-
-        <ProfileMenuCard
-          title="Admin Dashboard"
-          description="View active SOS alerts, high-risk reports, and monitoring activity."
-          badge="Demo"
-          variant="danger"
-          icon={<ShieldAlert size={25} color={COLORS.danger} />}
-          onPress={() => router.push("/admin")}
-        />
+        <View style={styles.featureCard}>
+          <CheckCircle2 size={24} color={COLORS.primary} />
+          <Text style={styles.featureTitle}>Proof of Work</Text>
+          <Text style={styles.featureText}>
+            Finished-work photos and status history prove action was taken.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.infoCard}>
-        <View style={styles.infoIconBox}>
-          <ShieldCheck size={22} color={COLORS.primary} />
+        <View style={styles.infoIcon}>
+          <BellRing size={22} color={COLORS.primary} />
         </View>
 
         <View style={styles.infoTextBox}>
-          <Text style={styles.infoTitle}>Demo security note</Text>
+          <Text style={styles.infoTitle}>Presentation reminder</Text>
           <Text style={styles.infoText}>
-            Use “Reset Demo & Start Fresh” before presenting if you want the app
-            to behave like it is being opened for the first time.
+            Emphasize that this is not just a management system. It includes AI
+            classification, authority routing, status tracking, escalation, and
+            evidence-based resolution.
           </Text>
         </View>
       </View>
@@ -346,43 +383,60 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   heroCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.primary,
     borderRadius: 34,
     padding: SPACING.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    alignItems: "center",
     ...SHADOWS.soft,
   },
 
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: SPACING.lg,
-  },
-
-  profileAvatarOuter: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    backgroundColor: "rgba(5, 150, 105, 0.08)",
+  avatarOuter: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: "rgba(255,255,255,0.16)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(5, 150, 105, 0.12)",
+    borderColor: "rgba(255,255,255,0.22)",
   },
 
-  profileAvatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.primaryLight,
+  avatar: {
+    width: 78,
+    height: 78,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  protectedPill: {
-    backgroundColor: COLORS.primaryLight,
+  heroTitle: {
+    marginTop: SPACING.lg,
+    fontSize: FONT_SIZE.xl,
+    fontWeight: "900",
+    color: COLORS.white,
+    textAlign: "center",
+  },
+
+  heroSubtitle: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.sm,
+    color: "rgba(255,255,255,0.86)",
+    textAlign: "center",
+    lineHeight: 21,
+    fontWeight: "700",
+  },
+
+  badgeRow: {
+    marginTop: SPACING.lg,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: SPACING.sm,
+  },
+
+  badge: {
+    backgroundColor: COLORS.white,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -391,51 +445,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  protectedText: {
+  badgeText: {
+    fontSize: FONT_SIZE.xs,
     color: COLORS.primaryDark,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "900",
-  },
-
-  title: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  subtitle: {
-    marginTop: SPACING.sm,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.mutedText,
-    lineHeight: 21,
-    fontWeight: "700",
-  },
-
-  heroDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: SPACING.lg,
-  },
-
-  heroInfoRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-  },
-
-  heroInfoItem: {
-    backgroundColor: COLORS.surfaceMuted,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-
-  heroInfoText: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.text,
     fontWeight: "900",
   },
 
@@ -450,35 +462,27 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
+    alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOWS.soft,
   },
 
-  statusIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.sm,
-  },
-
   statusValue: {
-    fontSize: FONT_SIZE.lg,
+    fontSize: FONT_SIZE.xl,
     fontWeight: "900",
-    color: COLORS.text,
+    color: COLORS.primary,
   },
 
   statusLabel: {
     marginTop: 2,
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
-    fontWeight: "800",
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
 
-  sectionHeaderBox: {
+  sectionHeader: {
     marginTop: SPACING.xl,
     marginBottom: SPACING.md,
   },
@@ -497,7 +501,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  menuSection: {
+  menuList: {
     gap: SPACING.md,
   },
 
@@ -513,7 +517,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
-  menuCardPressed: {
+  cardPressed: {
     transform: [{ scale: 0.985 }],
     opacity: 0.92,
   },
@@ -526,50 +530,62 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  menuContent: {
+  menuTextBox: {
     flex: 1,
-  },
-
-  menuTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
   },
 
   menuTitle: {
-    flex: 1,
     fontSize: FONT_SIZE.md,
-    fontWeight: "900",
     color: COLORS.text,
-  },
-
-  badge: {
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-
-  badgeText: {
-    fontSize: 10,
     fontWeight: "900",
-    textTransform: "uppercase",
   },
 
-  menuText: {
+  menuDescription: {
     marginTop: 4,
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
-    lineHeight: 18,
     fontWeight: "700",
+    lineHeight: 18,
   },
 
-  arrowBox: {
+  menuArrow: {
     width: 34,
     height: 34,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  featureGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.md,
+  },
+
+  featureCard: {
+    width: "47%",
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  featureTitle: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontWeight: "900",
+  },
+
+  featureText: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 18,
   },
 
   infoCard: {
@@ -584,7 +600,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(5, 150, 105, 0.18)",
   },
 
-  infoIconBox: {
+  infoIcon: {
     width: 44,
     height: 44,
     borderRadius: RADIUS.full,

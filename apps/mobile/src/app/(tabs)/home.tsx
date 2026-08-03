@@ -1,29 +1,39 @@
-import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import type { ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import * as SMS from "expo-sms";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BellRing,
-  ChartNoAxesColumnIncreasing,
+  Brain,
+  Building2,
+  Camera,
+  CheckCircle2,
   ChevronRight,
   CirclePlus,
+  ClipboardList,
   ContactRound,
-  Footprints,
+  Database,
   Map,
   MapPin,
   Menu,
-  RadioTower,
+  RefreshCcw,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   TriangleAlert,
   UsersRound,
+  Wrench,
 } from "lucide-react-native";
 
-import SafeWalkLogo from "../../assets/safewalk-ai-logo.png";
-
-import { useContactStore } from "../../store/contactStore";
-import { useSOSStore } from "../../store/sosStore";
-import { getCurrentLocation } from "../../lib/location";
 import { Screen } from "../../components/Screen";
 import {
   COLORS,
@@ -32,65 +42,45 @@ import {
   SHADOWS,
   SPACING,
 } from "../../constants/theme";
+import { useContactStore } from "../../store/contactStore";
+import { useSOSStore } from "../../store/sosStore";
+import { useIncidentStore } from "../../store/incidentStore";
+import { getCurrentLocation } from "../../lib/location";
 import { createSOSAlertApi } from "../../lib/sosApi";
-
-
-type SOSCircleButtonProps = {
-  onPress: () => void;
-};
-
-type SafetyToolCardProps = {
-  title: string;
-  description: string;
-  badge?: string;
-  icon: React.ReactNode;
-  onPress: () => void;
-  variant?: "primary" | "danger" | "warning" | "info";
-};
+import { getIncidentReportsApi } from "../../lib/incidentApi";
+import { IncidentReport } from "../../types/incident";
 
 type QuickActionProps = {
   title: string;
-  icon: React.ReactNode;
+  description: string;
+  icon: ReactNode;
   onPress: () => void;
-  variant?: "primary" | "danger" | "warning" | "info";
+  tone?: "primary" | "danger" | "warning" | "info";
 };
 
-function SOSCircleButton({ onPress }: SOSCircleButtonProps) {
-  return (
-    <View style={styles.sosCircleOuter}>
-      <View style={styles.sosCircleMiddle}>
-        <Pressable
-          onPress={onPress}
-          style={({ pressed }) => [
-            styles.sosCircleButton,
-            pressed && styles.sosCircleButtonPressed,
-          ]}
-        >
-          <ShieldAlert size={34} color={COLORS.white} />
-          <Text style={styles.sosCircleText}>SOS</Text>
-          <Text style={styles.sosCircleSubText}>Tap for help</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
+type WorkflowCardProps = {
+  number: string;
+  title: string;
+  text: string;
+  icon: ReactNode;
+};
 
-function getVariantColor(variant: SafetyToolCardProps["variant"]) {
-  if (variant === "danger") {
+function getToneColors(tone: QuickActionProps["tone"] = "primary") {
+  if (tone === "danger") {
     return {
       color: COLORS.danger,
       lightColor: COLORS.dangerLight,
     };
   }
 
-  if (variant === "warning") {
+  if (tone === "warning") {
     return {
       color: COLORS.warning,
       lightColor: COLORS.warningLight,
     };
   }
 
-  if (variant === "info") {
+  if (tone === "info") {
     return {
       color: COLORS.info,
       lightColor: COLORS.infoLight,
@@ -103,19 +93,35 @@ function getVariantColor(variant: SafetyToolCardProps["variant"]) {
   };
 }
 
-function QuickAction({
+function isOpenReport(report: IncidentReport) {
+  return [
+    "pending",
+    "submitted",
+    "ai_reviewed",
+    "assigned",
+    "in_progress",
+    "escalated",
+  ].includes(report.status);
+}
+
+function isResolvedReport(report: IncidentReport) {
+  return ["resolved", "student_confirmed", "closed"].includes(report.status);
+}
+
+function QuickActionCard({
   title,
+  description,
   icon,
   onPress,
-  variant = "primary",
+  tone = "primary",
 }: QuickActionProps) {
-  const { color, lightColor } = getVariantColor(variant);
+  const { color, lightColor } = getToneColors(tone);
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.quickAction,
+        styles.quickActionCard,
         pressed && styles.cardPressed,
       ]}
     >
@@ -123,51 +129,32 @@ function QuickAction({
         {icon}
       </View>
 
-      <Text style={[styles.quickActionText, { color }]}>{title}</Text>
+      <View style={styles.quickActionTextBox}>
+        <Text style={styles.quickActionTitle}>{title}</Text>
+        <Text style={styles.quickActionDescription}>{description}</Text>
+      </View>
+
+      <View style={styles.quickActionArrow}>
+        <ChevronRight size={18} color={color} />
+      </View>
     </Pressable>
   );
 }
 
-function SafetyToolCard({
-  title,
-  description,
-  badge,
-  icon,
-  onPress,
-  variant = "primary",
-}: SafetyToolCardProps) {
-  const { color, lightColor } = getVariantColor(variant);
-
+function WorkflowCard({ number, title, text, icon }: WorkflowCardProps) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.toolCard,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <View style={[styles.toolIconBox, { backgroundColor: lightColor }]}>
-        {icon}
-      </View>
-
-      <View style={styles.toolContent}>
-        <View style={styles.toolTitleRow}>
-          <Text style={styles.toolTitle}>{title}</Text>
-
-          {badge ? (
-            <View style={[styles.toolBadge, { backgroundColor: lightColor }]}>
-              <Text style={[styles.toolBadgeText, { color }]}>{badge}</Text>
-            </View>
-          ) : null}
+    <View style={styles.workflowCard}>
+      <View style={styles.workflowTopRow}>
+        <View style={styles.workflowNumber}>
+          <Text style={styles.workflowNumberText}>{number}</Text>
         </View>
 
-        <Text style={styles.toolDescription}>{description}</Text>
+        <View style={styles.workflowIcon}>{icon}</View>
       </View>
 
-      <View style={styles.toolArrow}>
-        <ChevronRight size={18} color={COLORS.mutedText} />
-      </View>
-    </Pressable>
+      <Text style={styles.workflowTitle}>{title}</Text>
+      <Text style={styles.workflowText}>{text}</Text>
+    </View>
   );
 }
 
@@ -182,9 +169,9 @@ function buildSOSMessage({
 }) {
   const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
 
-  return `EMERGENCY SOS from SafeWalk AI
+  return `EMERGENCY SOS from SafeCampus AI
 
-${userName} may be in danger and needs urgent help.
+${userName} may need urgent help at or around the University of Ghana campus.
 
 Current location:
 ${mapLink}
@@ -201,69 +188,110 @@ export default function HomeScreen() {
 
   const contacts = useContactStore((state) => state.contacts);
   const createSOSAlert = useSOSStore((state) => state.createSOSAlert);
+  const localReports = useIncidentStore((state) => state.reports);
+
+  const [backendReports, setBackendReports] = useState<IncidentReport[]>([]);
+  const [usingBackend, setUsingBackend] = useState(false);
+  const [loadingReports, setLoadingReports] = useState(false);
+
+  const reports = usingBackend ? backendReports : localReports;
+
+  const homeStats = useMemo(() => {
+    const totalReports = reports.length;
+    const openReports = reports.filter(isOpenReport).length;
+    const resolvedReports = reports.filter(isResolvedReport).length;
+    const criticalReports = reports.filter(
+      (report) =>
+        report.priority === "critical" ||
+        Number(report.priorityScore ?? report.aiRiskScore ?? 0) >= 85
+    ).length;
+
+    return {
+      totalReports,
+      openReports,
+      resolvedReports,
+      criticalReports,
+    };
+  }, [reports]);
+
+  const fetchReports = useCallback(async () => {
+    try {
+      setLoadingReports(true);
+
+      const data = await getIncidentReportsApi({ limit: 100 });
+
+      setBackendReports(data);
+      setUsingBackend(true);
+    } catch (error) {
+      console.log("Home report sync failed:", error);
+      setUsingBackend(false);
+    } finally {
+      setLoadingReports(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchReports();
+    }, [fetchReports])
+  );
 
   const handleSOSPress = async () => {
-  if (contacts.length === 0) {
-    Alert.alert(
-      "No Emergency Contacts",
-      "Add at least one trusted contact before using SOS.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Add Contact",
-          onPress: () => router.push("/contacts"),
-        },
-      ]
-    );
-
-    return;
-  }
-
-  try {
-    const smsAvailable = await SMS.isAvailableAsync();
-
-    if (!smsAvailable) {
+    if (contacts.length === 0) {
       Alert.alert(
-        "SMS Not Available",
-        "This device cannot send SMS messages. Try testing on a real phone with a SIM card."
+        "No Emergency Contacts",
+        "Add at least one trusted contact before using SOS.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Add Contact",
+            onPress: () => router.push("/contacts"),
+          },
+        ]
       );
+
       return;
     }
 
-    const location = await getCurrentLocation();
+    try {
+      const smsAvailable = await SMS.isAvailableAsync();
 
-    const latitude = location.latitude;
-    const longitude = location.longitude;
+      if (!smsAvailable) {
+        Alert.alert(
+          "SMS Not Available",
+          "This device cannot send SMS messages. Test SOS on a real phone with a SIM card."
+        );
+        return;
+      }
 
-    const trustedPhones = contacts
-      .map((contact) => contact.phone)
-      .filter((phone) => phone && phone.trim().length > 0);
+      const location = await getCurrentLocation();
 
-    if (trustedPhones.length === 0) {
-      Alert.alert(
-        "No Phone Number",
-        "Your trusted contact does not have a valid phone number."
-      );
-      return;
-    }
+      const trustedPhones = contacts
+        .map((contact) => contact.phone)
+        .filter((phone) => phone && phone.trim().length > 0);
 
-    const sosMessage = buildSOSMessage({
-      userName: "SafeWalk User",
-      latitude,
-      longitude,
-    });
+      if (trustedPhones.length === 0) {
+        Alert.alert(
+          "No Phone Number",
+          "Your trusted contact does not have a valid phone number."
+        );
+        return;
+      }
 
-    const alertId = createSOSAlert({
-      userName: "SafeWalk User",
-      location,
-    });
+      const sosMessage = buildSOSMessage({
+        userName: "SafeCampus User",
+        latitude: location.latitude,
+        longitude: location.longitude,
+      });
 
-    const alert = useSOSStore.getState().getAlertById(alertId);
+      const alertId = createSOSAlert({
+        userName: "SafeCampus User",
+        location,
+      });
 
-    if (alert) {
       createSOSAlertApi({
-        userName: alert.userName,
-        location: alert.location,
+        userName: "SafeCampus User",
+        location,
         message: sosMessage,
         source: "sos_button",
         trustedContactName: contacts[0]?.name ?? "",
@@ -271,46 +299,45 @@ export default function HomeScreen() {
       }).catch((error) => {
         console.log("SOS backend sync failed:", error);
       });
+
+      const smsResult = await SMS.sendSMSAsync(trustedPhones, sosMessage);
+
+      if (smsResult.result === "sent") {
+        Alert.alert(
+          "SOS Message Sent",
+          `Emergency SMS was sent to ${trustedPhones.length} trusted contact${
+            trustedPhones.length === 1 ? "" : "s"
+          }.`
+        );
+      } else if (smsResult.result === "cancelled") {
+        Alert.alert(
+          "SOS Message Cancelled",
+          "The SMS screen was opened, but the message was not sent."
+        );
+      } else {
+        Alert.alert(
+          "SMS Status Unknown",
+          "The SMS app was opened, but SafeCampus AI could not confirm whether the message was sent."
+        );
+      }
+
+      router.push({
+        pathname: "/sos/active",
+        params: {
+          alertId,
+          smsStatus: smsResult.result,
+          sentTo: trustedPhones.join(", "),
+        },
+      });
+    } catch (error) {
+      Alert.alert(
+        "SOS Error",
+        error instanceof Error
+          ? error.message
+          : "Unable to send SOS message."
+      );
     }
-
-    const smsResult = await SMS.sendSMSAsync(trustedPhones, sosMessage);
-
-    if (smsResult.result === "sent") {
-      Alert.alert(
-        "SOS Message Sent",
-        `Emergency SMS was sent to ${trustedPhones.length} trusted contact${
-          trustedPhones.length === 1 ? "" : "s"
-        }.`
-      );
-    } else if (smsResult.result === "cancelled") {
-      Alert.alert(
-        "SOS Message Cancelled",
-        "The SMS screen was opened, but the message was not sent."
-      );
-    } else {
-      Alert.alert(
-        "SMS Status Unknown",
-        "The SMS app was opened, but SafeWalk AI could not confirm whether the message was sent."
-      );
-    }
-
-    router.push({
-      pathname: "/sos/active",
-      params: {
-        alertId,
-        smsStatus: smsResult.result,
-        sentTo: trustedPhones.join(", "),
-      },
-    });
-  } catch (error) {
-    Alert.alert(
-      "SOS Error",
-      error instanceof Error
-        ? error.message
-        : "Unable to send SOS message."
-    );
-  }
-};
+  };
 
   return (
     <Screen scroll>
@@ -321,27 +348,48 @@ export default function HomeScreen() {
               <Menu size={25} color={COLORS.white} />
             </Pressable>
 
-            <Image
-              source={SafeWalkLogo}
-              resizeMode="contain"
-              style={styles.logo}
-            />
+            <View style={styles.brandBox}>
+              <Text style={styles.brandTitle}>SafeCampus AI</Text>
+              <Text style={styles.brandSubtitle}>University of Ghana</Text>
+            </View>
 
-            <Pressable style={styles.bellButton}>
-              <BellRing size={22} color={COLORS.white} />
+            <Pressable onPress={fetchReports} style={styles.bellButton}>
+              {loadingReports ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <BellRing size={22} color={COLORS.white} />
+              )}
 
               <View style={styles.notificationDot} />
             </Pressable>
           </View>
 
-          <View style={styles.searchCard}>
-            <View style={styles.avatar}>
-              <ShieldCheck size={20} color={COLORS.primary} />
+          <View style={styles.heroContent}>
+            <View style={styles.heroPill}>
+              <Sparkles size={15} color={COLORS.primaryDark} />
+              <Text style={styles.heroPillText}>AI-powered campus response</Text>
             </View>
 
-            <Text style={styles.searchText}>What is your walk today?</Text>
+            <Text style={styles.heroTitle}>Report. Route. Resolve.</Text>
 
-            <MapPin size={22} color={COLORS.mutedText} />
+            <Text style={styles.heroText}>
+              Students report campus issues with location and photo evidence.
+              SafeCampus AI classifies, prioritizes, and routes each case to the
+              responsible University of Ghana authority.
+            </Text>
+          </View>
+
+          <View style={styles.floatingReportCard}>
+            <View style={styles.floatingIcon}>
+              <ClipboardList size={22} color={COLORS.primary} />
+            </View>
+
+            <View style={styles.floatingTextBox}>
+              <Text style={styles.floatingTitle}>Need to report something?</Text>
+              <Text style={styles.floatingText}>
+                Lecture room fault, sanitation, fire, disaster, ICT, or safety issue.
+              </Text>
+            </View>
 
             <Pressable
               onPress={() => router.push("/(tabs)/report")}
@@ -352,154 +400,151 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={styles.quickActionsCard}>
-          <QuickAction
-            title="Check In"
-            variant="primary"
-            icon={<ShieldCheck size={19} color={COLORS.primary} />}
-            onPress={() => router.push("/navigation")}
-          />
-
-          <View style={styles.quickDivider} />
-
-          <QuickAction
-            title="My Circle"
-            variant="primary"
-            icon={<UsersRound size={19} color={COLORS.primary} />}
-            onPress={() => router.push("/contacts")}
-          />
-
-          <View style={styles.quickDivider} />
-
-          <QuickAction
-            title="Report"
-            variant="danger"
-            icon={<TriangleAlert size={19} color={COLORS.danger} />}
-            onPress={() => router.push("/(tabs)/report")}
-          />
-
-          <View style={styles.quickDivider} />
-
-          <QuickAction
-            title="Insights"
-            variant="info"
-            icon={<ChartNoAxesColumnIncreasing size={19} color={COLORS.info} />}
-            onPress={() => router.push("/(tabs)/risk-map")}
-          />
-        </View>
-
-        <View style={styles.emergencyPostCard}>
-          <View style={styles.postHeader}>
-            <View style={styles.postAvatar}>
-              <ShieldAlert size={24} color={COLORS.danger} />
-            </View>
-
-            <View style={styles.postHeaderText}>
-              <Text style={styles.postName}>Emergency Assistance</Text>
-              <Text style={styles.postMeta}>Live location alert • Ready now</Text>
-            </View>
-
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Live</Text>
-            </View>
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{homeStats.totalReports}</Text>
+            <Text style={styles.statLabel}>Total</Text>
           </View>
 
-          <Text style={styles.postText}>
-            If you feel unsafe, press SOS. SafeWalk AI will capture your current
-            GPS location and notify your trusted contact immediately.
-          </Text>
-
-          <View style={styles.sosDisplayCard}>
-            <View style={styles.sosTopLabel}>
-              <ShieldAlert size={17} color={COLORS.danger} />
-              <Text style={styles.sosTopLabelText}>Emergency SOS</Text>
-            </View>
-
-            <SOSCircleButton onPress={handleSOSPress} />
-
-            <View style={styles.sosInfoStrip}>
-              <MapPin size={17} color={COLORS.danger} />
-              <Text style={styles.sosHint}>
-                Your current location will be sent to your trusted contact.
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.quickStatusRow}>
-          <View style={styles.quickStatusCard}>
-            <View style={styles.quickStatusIcon}>
-              <ContactRound size={20} color={COLORS.primary} />
-            </View>
-
-            <Text style={styles.quickStatusValue}>{contacts.length}</Text>
-            <Text style={styles.quickStatusLabel}>Trusted contacts</Text>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: COLORS.info }]}>
+              {homeStats.openReports}
+            </Text>
+            <Text style={styles.statLabel}>Open</Text>
           </View>
 
-          <View style={styles.quickStatusCard}>
-            <View style={styles.quickStatusIconWarning}>
-              <BellRing size={20} color={COLORS.warning} />
-            </View>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: COLORS.primary }]}>
+              {homeStats.resolvedReports}
+            </Text>
+            <Text style={styles.statLabel}>Resolved</Text>
+          </View>
 
-            <Text style={styles.quickStatusValue}>Live</Text>
-            <Text style={styles.quickStatusLabel}>Safety alerts</Text>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: COLORS.danger }]}>
+              {homeStats.criticalReports}
+            </Text>
+            <Text style={styles.statLabel}>Critical</Text>
           </View>
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Safety tools</Text>
+          <Text style={styles.sectionTitle}>Main Actions</Text>
           <Text style={styles.sectionSubtitle}>
-            Use these tools before, during, or after a safety incident.
+            Use these tools to report, track, and resolve campus issues.
           </Text>
         </View>
 
-        <View style={styles.toolsList}>
-          <SafetyToolCard
-            title="Walk Safe"
-            description="Start a monitored walk to your hostel, lecture hall, or destination."
-            badge="Live"
-            variant="primary"
-            icon={<Footprints size={23} color={COLORS.primary} />}
-            onPress={() => router.push("/(tabs)/walk-safe")}
+        <View style={styles.quickActionsList}>
+          <QuickActionCard
+            title="Report Campus Issue"
+            description="Submit a problem with exact location, description, and photo evidence."
+            tone="primary"
+            icon={<Camera size={23} color={COLORS.primary} />}
+            onPress={() => router.push("/(tabs)/report")}
           />
 
-          <SafetyToolCard
-            title="Risk Map"
-            description="View unsafe areas based on student reports and danger patterns."
-            badge="AI"
-            variant="info"
+          <QuickActionCard
+            title="Campus Issue Map"
+            description="View open, urgent, resolved, and mapped campus reports."
+            tone="info"
             icon={<Map size={23} color={COLORS.info} />}
             onPress={() => router.push("/(tabs)/risk-map")}
           />
 
-          <SafetyToolCard
-            title="Report Incident"
-            description="Report robbery, phone snatching, harassment, or suspicious activity."
-            variant="danger"
-            icon={<TriangleAlert size={23} color={COLORS.danger} />}
-            onPress={() => router.push("/(tabs)/report")}
+          <QuickActionCard
+            title="Authority Dashboard"
+            description="Accept, start work, resolve, close, or escalate reported cases."
+            tone="warning"
+            icon={<Wrench size={23} color={COLORS.warning} />}
+            onPress={() => router.push("/admin")}
           />
 
-          <SafetyToolCard
+          <QuickActionCard
             title="Emergency Contacts"
-            description="Manage the people who receive your emergency and live-share alerts."
-            variant="warning"
-            icon={<ContactRound size={23} color={COLORS.warning} />}
+            description="Manage trusted people who receive urgent SOS alerts."
+            tone="danger"
+            icon={<ContactRound size={23} color={COLORS.danger} />}
             onPress={() => router.push("/contacts")}
           />
         </View>
 
-        <View style={styles.warningCard}>
-          <View style={styles.warningIconBox}>
-            <TriangleAlert size={22} color={COLORS.warningDark} />
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>How SafeCampus AI Works</Text>
+          <Text style={styles.sectionSubtitle}>
+            This workflow shows what the system does after a student submits a
+            report.
+          </Text>
+        </View>
+
+        <View style={styles.workflowGrid}>
+          <WorkflowCard
+            number="01"
+            title="Student reports"
+            text="The student submits a campus problem with date, location, description, and evidence."
+            icon={<UsersRound size={20} color={COLORS.primary} />}
+          />
+
+          <WorkflowCard
+            number="02"
+            title="AI classifies"
+            text="The system detects issue type, priority score, and the responsible UG unit."
+            icon={<Brain size={20} color={COLORS.primary} />}
+          />
+
+          <WorkflowCard
+            number="03"
+            title="Authority acts"
+            text="The authority accepts the case, starts work, resolves it, or escalates it."
+            icon={<Building2 size={20} color={COLORS.primary} />}
+          />
+
+          <WorkflowCard
+            number="04"
+            title="Proof is stored"
+            text="Finished-work photo evidence and status history prove that action was taken."
+            icon={<CheckCircle2 size={20} color={COLORS.primary} />}
+          />
+        </View>
+
+        <View style={styles.emergencyCard}>
+          <View style={styles.emergencyTopRow}>
+            <View style={styles.emergencyIcon}>
+              <ShieldAlert size={26} color={COLORS.danger} />
+            </View>
+
+            <View style={styles.emergencyTextBox}>
+              <Text style={styles.emergencyTitle}>Emergency SOS</Text>
+              <Text style={styles.emergencyText}>
+                Use this only for urgent personal safety or medical emergencies.
+                Your GPS location will be sent to your trusted contact.
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.warningTextBox}>
-            <Text style={styles.warningTitle}>Tonight’s safety reminder</Text>
-            <Text style={styles.warningText}>
-              Avoid quiet routes when walking alone. Start Walk Safe mode before
-              leaving campus or your hostel.
+          <Pressable
+            onPress={handleSOSPress}
+            style={({ pressed }) => [
+              styles.sosButton,
+              pressed && styles.sosButtonPressed,
+            ]}
+          >
+            <ShieldAlert size={22} color={COLORS.white} />
+            <Text style={styles.sosButtonText}>Send Emergency SOS</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.infoCard}>
+          <View style={styles.infoIcon}>
+            <Database size={22} color={COLORS.primary} />
+          </View>
+
+          <View style={styles.infoTextBox}>
+            <Text style={styles.infoTitle}>Why this is more than reporting</Text>
+            <Text style={styles.infoText}>
+              SafeCampus AI creates a traceable response system. Reports are not
+              only stored; they are classified, routed, monitored, resolved with
+              evidence, and displayed for accountability.
             </Text>
           </View>
         </View>
@@ -520,9 +565,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingTop: SPACING.xl,
     paddingHorizontal: SPACING.lg,
-    paddingBottom: 72,
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
+    paddingBottom: 92,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
 
   topNav: {
@@ -539,9 +584,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  logo: {
-    width: 190,
-    height: 54,
+  brandBox: {
+    alignItems: "center",
+  },
+
+  brandTitle: {
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.white,
+    fontWeight: "900",
+  },
+
+  brandSubtitle: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
+    color: "rgba(255,255,255,0.78)",
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
 
   bellButton: {
@@ -565,76 +624,86 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
 
-  statusRow: {
-    marginTop: SPACING.lg,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
+  heroContent: {
+    marginTop: SPACING.xl,
   },
 
-  statusPill: {
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  statusText: {
-    color: COLORS.primaryDark,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "900",
-  },
-
-  statusPillWhite: {
+  heroPill: {
+    alignSelf: "flex-start",
     backgroundColor: COLORS.white,
+    borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
 
-  statusTextGreen: {
-    color: COLORS.primary,
+  heroPillText: {
     fontSize: FONT_SIZE.xs,
+    color: COLORS.primaryDark,
     fontWeight: "900",
   },
 
-  searchCard: {
+  heroTitle: {
+    marginTop: SPACING.lg,
+    fontSize: 34,
+    color: COLORS.white,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+  },
+
+  heroText: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.sm,
+    color: "rgba(255,255,255,0.86)",
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+
+  floatingReportCard: {
     position: "absolute",
     left: SPACING.lg,
     right: SPACING.lg,
-    bottom: -34,
-    minHeight: 74,
+    bottom: -42,
+    minHeight: 86,
     backgroundColor: COLORS.surface,
-    borderRadius: 34,
+    borderRadius: 32,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.sm,
+    gap: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOWS.card,
   },
 
-  avatar: {
-    width: 44,
-    height: 44,
+  floatingIcon: {
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primaryLight,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  searchText: {
+  floatingTextBox: {
     flex: 1,
+  },
+
+  floatingTitle: {
     fontSize: FONT_SIZE.sm,
-    fontWeight: "800",
+    color: COLORS.text,
+    fontWeight: "900",
+  },
+
+  floatingText: {
+    marginTop: 2,
+    fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 18,
   },
 
   plusButton: {
@@ -647,272 +716,36 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
-  quickActionsCard: {
-    marginTop: 52,
+  statsRow: {
+    marginTop: 62,
     marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.sm,
     flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.soft,
-  },
-
-  quickAction: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-
-  quickActionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  quickActionText: {
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
-  quickDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: COLORS.border,
-  },
-
-  emergencyPostCard: {
-    marginTop: SPACING.lg,
-    marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderRadius: 28,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.soft,
-  },
-
-  postHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  postAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  postHeaderText: {
-    flex: 1,
-  },
-
-  postName: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  postMeta: {
-    marginTop: 3,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "700",
-    color: COLORS.mutedText,
-  },
-
-  liveBadge: {
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 5,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primary,
-  },
-
-  liveText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: COLORS.primaryDark,
-    textTransform: "uppercase",
-  },
-
-  postText: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
-    lineHeight: 22,
-    fontWeight: "700",
-  },
-
-  sosDisplayCard: {
-    marginTop: SPACING.lg,
-    backgroundColor: COLORS.background,
-    borderRadius: 30,
-    padding: SPACING.lg,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  sosTopLabel: {
-    backgroundColor: COLORS.dangerLight,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-
-  sosTopLabelText: {
-    color: COLORS.danger,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-
-  sosCircleOuter: {
-    marginTop: SPACING.xl,
-    width: 270,
-    height: 270,
-    borderRadius: 135,
-    backgroundColor: "rgba(220, 38, 38, 0.07)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.10)",
-  },
-
-  sosCircleMiddle: {
-    width: 196,
-    height: 196,
-    borderRadius: 98,
-    backgroundColor: "rgba(220, 38, 38, 0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.18)",
-  },
-
-  sosCircleButton: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    backgroundColor: COLORS.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.danger,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.35,
-    shadowRadius: 22,
-    elevation: 8,
-  },
-
-  sosCircleButtonPressed: {
-    transform: [{ scale: 0.96 }],
-    opacity: 0.9,
-  },
-
-  sosCircleText: {
-    marginTop: SPACING.xs,
-    color: COLORS.white,
-    fontSize: FONT_SIZE.xl,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-
-  sosCircleSubText: {
-    marginTop: 2,
-    color: "rgba(255,255,255,0.82)",
-    fontSize: FONT_SIZE.xs,
-    fontWeight: "800",
-  },
-
-  sosInfoStrip: {
-    marginTop: SPACING.lg,
-    backgroundColor: COLORS.dangerLight,
-    borderRadius: RADIUS.xl,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    flexDirection: "row",
-    alignItems: "flex-start",
     gap: SPACING.sm,
   },
 
-  sosHint: {
-    flex: 1,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.dangerDark,
-    fontWeight: "800",
-    lineHeight: 18,
-  },
-
-  quickStatusRow: {
-    marginTop: SPACING.lg,
-    marginHorizontal: SPACING.lg,
-    flexDirection: "row",
-    gap: SPACING.md,
-  },
-
-  quickStatusCard: {
+  statCard: {
     flex: 1,
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    padding: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
+    alignItems: "center",
     ...SHADOWS.soft,
   },
 
-  quickStatusIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.sm,
-  },
-
-  quickStatusIconWarning: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.warningLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.sm,
-  },
-
-  quickStatusValue: {
+  statValue: {
     fontSize: FONT_SIZE.lg,
     fontWeight: "900",
     color: COLORS.text,
   },
 
-  quickStatusLabel: {
+  statLabel: {
     marginTop: 2,
-    fontSize: FONT_SIZE.xs,
+    fontSize: 10,
     color: COLORS.mutedText,
-    fontWeight: "800",
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
 
   sectionHeader: {
@@ -935,12 +768,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  toolsList: {
+  quickActionsList: {
     marginHorizontal: SPACING.lg,
     gap: SPACING.md,
   },
 
-  toolCard: {
+  quickActionCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
@@ -952,12 +785,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
-  cardPressed: {
-    transform: [{ scale: 0.985 }],
-    opacity: 0.92,
-  },
-
-  toolIconBox: {
+  quickActionIcon: {
     width: 56,
     height: 56,
     borderRadius: RADIUS.full,
@@ -965,36 +793,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  toolContent: {
+  quickActionTextBox: {
     flex: 1,
   },
 
-  toolTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-  },
-
-  toolTitle: {
-    flex: 1,
+  quickActionTitle: {
     fontSize: FONT_SIZE.md,
     fontWeight: "900",
     color: COLORS.text,
   },
 
-  toolBadge: {
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-
-  toolBadgeText: {
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-
-  toolDescription: {
+  quickActionDescription: {
     marginTop: 4,
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
@@ -1002,7 +811,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  toolArrow: {
+  quickActionArrow: {
     width: 34,
     height: 34,
     borderRadius: RADIUS.full,
@@ -1011,42 +820,178 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  warningCard: {
-    marginTop: SPACING.xl,
+  cardPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.92,
+  },
+
+  workflowGrid: {
     marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.warningLight,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.md,
+  },
+
+  workflowCard: {
+    width: "47%",
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: "#FDE68A",
+    borderColor: COLORS.border,
+    ...SHADOWS.soft,
+  },
+
+  workflowTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  workflowNumber: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+  },
+
+  workflowNumberText: {
+    fontSize: 10,
+    color: COLORS.primaryDark,
+    fontWeight: "900",
+  },
+
+  workflowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  workflowTitle: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontWeight: "900",
+  },
+
+  workflowText: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+
+  emergencyCard: {
+    marginTop: SPACING.xl,
+    marginHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.18)",
+    ...SHADOWS.soft,
+  },
+
+  emergencyTopRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: SPACING.md,
   },
 
-  warningIconBox: {
-    width: 44,
-    height: 44,
+  emergencyIcon: {
+    width: 52,
+    height: 52,
     borderRadius: RADIUS.full,
-    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    backgroundColor: COLORS.dangerLight,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  warningTextBox: {
+  emergencyTextBox: {
     flex: 1,
   },
 
-  warningTitle: {
+  emergencyTitle: {
     fontSize: FONT_SIZE.md,
+    color: COLORS.danger,
     fontWeight: "900",
-    color: COLORS.warningDark,
   },
 
-  warningText: {
+  emergencyText: {
+    marginTop: 4,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+
+  sosButton: {
+    marginTop: SPACING.lg,
+    minHeight: 52,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.danger,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.sm,
+    shadowColor: COLORS.danger,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+
+  sosButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
+  },
+
+  sosButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "900",
+  },
+
+  infoCard: {
+    marginTop: SPACING.xl,
+    marginHorizontal: SPACING.lg,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(5, 150, 105, 0.18)",
+  },
+
+  infoIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  infoTextBox: {
+    flex: 1,
+  },
+
+  infoTitle: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.primaryDark,
+    fontWeight: "900",
+  },
+
+  infoText: {
     marginTop: SPACING.xs,
     fontSize: FONT_SIZE.sm,
-    color: COLORS.warningDark,
+    color: COLORS.primaryDark,
     fontWeight: "700",
     lineHeight: 20,
   },

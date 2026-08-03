@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Pressable,
   StyleSheet,
@@ -29,6 +30,7 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
 
 import { Screen } from "../../components/Screen";
 import {
@@ -317,6 +319,30 @@ function CampusReportCard({
         </View>
       ) : null}
 
+      {report.resolutionEvidence?.length ? (
+  <View style={styles.resolutionEvidenceBox}>
+    <Text style={styles.resolutionEvidenceTitle}>
+      Finished work evidence
+    </Text>
+
+    <View style={styles.resolutionEvidenceGrid}>
+      {report.resolutionEvidence.map((item) => (
+        <Image
+          key={item.uri}
+          source={{ uri: item.uri }}
+          style={styles.resolutionEvidenceImage}
+        />
+      ))}
+    </View>
+
+    {report.resolutionSummary ? (
+      <Text style={styles.resolutionSummaryText}>
+        {report.resolutionSummary}
+      </Text>
+    ) : null}
+  </View>
+) : null}
+
       {report.statusHistory?.length ? (
         <View style={styles.historyBox}>
           <Text style={styles.historyTitle}>Latest activity</Text>
@@ -405,6 +431,68 @@ function CampusReportCard({
   );
 }
 
+async function takeResolutionPhoto() {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+  if (!permission.granted) {
+    Alert.alert(
+      "Camera Permission Needed",
+      "Allow camera access so the authority can attach proof that the issue has been resolved."
+    );
+
+    return [];
+  }
+
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.7,
+    allowsEditing: false,
+  });
+
+  if (result.canceled || !result.assets[0]) {
+    return [];
+  }
+
+  return [
+    {
+      uri: result.assets[0].uri,
+      type: "image" as const,
+      uploadedAt: new Date().toISOString(),
+    },
+  ];
+}
+
+async function pickResolutionPhoto() {
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+  if (!permission.granted) {
+    Alert.alert(
+      "Gallery Permission Needed",
+      "Allow photo access so the authority can attach proof that the issue has been resolved."
+    );
+
+    return [];
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.7,
+    allowsMultipleSelection: false,
+  });
+
+  if (result.canceled || !result.assets[0]) {
+    return [];
+  }
+
+  return [
+    {
+      uri: result.assets[0].uri,
+      type: "image" as const,
+      uploadedAt: new Date().toISOString(),
+    },
+  ];
+}
+
 export default function AdminDashboardScreen() {
   const insets = useSafeAreaInsets();
 
@@ -436,77 +524,145 @@ export default function AdminDashboardScreen() {
   );
 
   const handleUpdateReportStatus = (
-    report: IncidentReport,
-    status: IncidentStatus
+  report: IncidentReport,
+  status: IncidentStatus
+) => {
+  const performStatusUpdate = async (
+    resolutionEvidence: {
+      uri: string;
+      type: "image" | "video" | "document";
+      uploadedAt?: string;
+    }[] = []
   ) => {
-    const actionText =
-      status === "assigned"
-        ? "accept and assign this report"
-        : status === "in_progress"
-          ? "start work on this report"
-          : status === "resolved"
-            ? "mark this report as resolved"
-            : status === "closed"
-              ? "close this report"
-              : status === "escalated"
-                ? "escalate this report"
-                : status === "rejected"
-                  ? "reject this report"
-                  : "update this report";
+    try {
+      setUpdatingReportId(report.id);
 
-    Alert.alert("Update Report", `Do you want to ${actionText}?`, [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-      {
-        text: "Continue",
-        style: status === "rejected" ? "destructive" : "default",
-        onPress: async () => {
-          try {
-            setUpdatingReportId(report.id);
+      await updateIncidentReportStatusApi(report.id, {
+        status,
+        actorName: "Authority Officer",
+        actorRole: "authority",
+        assignedToName:
+          status === "assigned"
+            ? report.assignedToName || "Assigned responder"
+            : report.assignedToName,
+        resolutionSummary:
+          status === "resolved"
+            ? resolutionEvidence.length
+              ? "Authority resolved the campus issue and attached finished-work photo evidence."
+              : "Authority marked the reported issue as resolved."
+            : report.resolutionSummary,
+        resolutionEvidence:
+          status === "resolved" ? resolutionEvidence : report.resolutionEvidence,
+        note:
+          status === "assigned"
+            ? "Authority accepted the AI-routed report and assigned it for action."
+            : status === "in_progress"
+              ? "Responder has started working on this campus issue."
+              : status === "resolved"
+                ? resolutionEvidence.length
+                  ? "Issue resolved with finished-work photo evidence."
+                  : "Issue resolved without photo evidence."
+                : status === "closed"
+                  ? "Case has been closed after resolution."
+                  : status === "escalated"
+                    ? "Case escalated because it needs higher attention."
+                    : status === "rejected"
+                      ? "Report rejected after authority review."
+                      : "Report status updated.",
+      });
 
-            await updateIncidentReportStatusApi(report.id, {
-              status,
-              actorName: "Authority Officer",
-              actorRole: "authority",
-              assignedToName:
-                status === "assigned"
-                  ? report.assignedToName || "Assigned responder"
-                  : report.assignedToName,
-              resolutionSummary:
-                status === "resolved"
-                  ? "Authority marked the reported issue as resolved."
-                  : report.resolutionSummary,
-              note:
-                status === "assigned"
-                  ? "Authority accepted the AI-routed report and assigned it for action."
-                  : status === "in_progress"
-                    ? "Responder has started working on this campus issue."
-                    : status === "resolved"
-                      ? "Authority has resolved the reported issue."
-                      : status === "closed"
-                        ? "Case has been closed after resolution."
-                        : status === "escalated"
-                          ? "Case escalated because it needs higher attention."
-                          : status === "rejected"
-                            ? "Report rejected after authority review."
-                            : "Report status updated.",
-            });
-
-            await fetchOverview();
-          } catch (error) {
-            Alert.alert(
-              "Update Failed",
-              "Could not update the report status. Check that your backend is running."
-            );
-          } finally {
-            setUpdatingReportId(null);
-          }
-        },
-      },
-    ]);
+      await fetchOverview();
+    } catch (error) {
+      Alert.alert(
+        "Update Failed",
+        "Could not update the report status. Check that your backend is running."
+      );
+    } finally {
+      setUpdatingReportId(null);
+    }
   };
+
+  if (status === "resolved") {
+    Alert.alert(
+      "Resolve With Evidence",
+      "Attach a finished-work photo to prove that the issue has been handled.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Take Photo",
+          onPress: async () => {
+            const evidence = await takeResolutionPhoto();
+
+            if (!evidence.length) {
+              Alert.alert(
+                "No Photo Added",
+                "Resolution was not submitted because no finished-work photo was captured."
+              );
+              return;
+            }
+
+            await performStatusUpdate(evidence);
+          },
+        },
+        {
+          text: "Choose Photo",
+          onPress: async () => {
+            const evidence = await pickResolutionPhoto();
+
+            if (!evidence.length) {
+              Alert.alert(
+                "No Photo Added",
+                "Resolution was not submitted because no finished-work photo was selected."
+              );
+              return;
+            }
+
+            await performStatusUpdate(evidence);
+          },
+        },
+        {
+          text: "Resolve Without Photo",
+          style: "destructive",
+          onPress: async () => {
+            await performStatusUpdate([]);
+          },
+        },
+      ]
+    );
+
+    return;
+  }
+
+  const actionText =
+    status === "assigned"
+      ? "accept and assign this report"
+      : status === "in_progress"
+        ? "start work on this report"
+        : status === "closed"
+          ? "close this report"
+          : status === "escalated"
+            ? "escalate this report"
+            : status === "rejected"
+              ? "reject this report"
+              : "update this report";
+
+  Alert.alert("Update Report", `Do you want to ${actionText}?`, [
+    {
+      text: "Cancel",
+      style: "cancel",
+    },
+    {
+      text: "Continue",
+      style: status === "rejected" ? "destructive" : "default",
+      onPress: async () => {
+        await performStatusUpdate([]);
+      },
+    },
+  ]);
+};
 
   const stats = overview?.stats;
 
@@ -1194,4 +1350,41 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 20,
   },
+  resolutionEvidenceBox: {
+  marginTop: SPACING.md,
+  backgroundColor: COLORS.primaryLight,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  borderWidth: 1,
+  borderColor: "rgba(5, 150, 105, 0.18)",
+},
+
+resolutionEvidenceTitle: {
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.primaryDark,
+  fontWeight: "900",
+  textTransform: "uppercase",
+  marginBottom: SPACING.sm,
+},
+
+resolutionEvidenceGrid: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: SPACING.sm,
+},
+
+resolutionEvidenceImage: {
+  width: 82,
+  height: 82,
+  borderRadius: RADIUS.lg,
+  backgroundColor: COLORS.surfaceMuted,
+},
+
+resolutionSummaryText: {
+  marginTop: SPACING.sm,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.primaryDark,
+  fontWeight: "800",
+  lineHeight: 18,
+},
 });

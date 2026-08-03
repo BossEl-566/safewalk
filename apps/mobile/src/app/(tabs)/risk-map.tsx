@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -12,8 +13,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AlertTriangle,
   Brain,
+  Building2,
+  CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   CircleAlert,
   Database,
@@ -24,6 +26,7 @@ import {
   ShieldCheck,
   Trash2,
   WifiOff,
+  Wrench,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -44,30 +47,37 @@ import {
   getIncidentReportsApi,
 } from "../../lib/incidentApi";
 import {
+  getIssueStatusLabel,
   getRiskLevelLabel,
   getRiskStats,
+  getTopCampusLocation,
   getTopIncidentPattern,
+  isOpenReport,
+  isResolvedReport,
   RiskLevel,
 } from "../../utils/riskIntelligence";
 
-type FeedMode = "mapped" | "all";
+type FeedMode = "open" | "urgent" | "resolved" | "all";
 
 const DEFAULT_MAP_CENTER = {
-  latitude: 6.6743,
-  longitude: -1.5712,
+  latitude: 5.6506,
+  longitude: -0.187,
 };
 
-function getRiskColor(level: RiskLevel) {
+function getIssueColor(level: RiskLevel) {
   if (level === "critical") return COLORS.danger;
   if (level === "high") return COLORS.danger;
   if (level === "medium") return COLORS.warning;
   return COLORS.primary;
 }
 
-function getReportRiskLevel(score: number): RiskLevel {
-  if (score >= 85) return "critical";
-  if (score >= 70) return "high";
-  if (score >= 40) return "medium";
+function getReportIssueLevel(report: IncidentReport): RiskLevel {
+  const score = Number(report.priorityScore ?? report.aiRiskScore ?? 0);
+
+  if (score >= 85 || report.priority === "critical") return "critical";
+  if (score >= 70 || report.priority === "high") return "high";
+  if (score >= 40 || report.priority === "medium") return "medium";
+
   return "low";
 }
 
@@ -83,7 +93,7 @@ function formatDateTime(value: string) {
 }
 
 function formatArea(value: string) {
-  return value.replace("_", " ");
+  return value.replace(/_/g, " ");
 }
 
 function SyncStatusCard({
@@ -118,7 +128,7 @@ function SyncStatusCard({
 
       <View style={styles.syncContent}>
         <Text style={styles.syncTitle}>
-          {usingBackend ? "Database connected" : "Local fallback active"}
+          {usingBackend ? "Campus database connected" : "Local fallback active"}
         </Text>
 
         <Text style={styles.syncText}>
@@ -160,9 +170,7 @@ function SegmentButton({
       onPress={onPress}
       style={[styles.segmentButton, active && styles.segmentButtonActive]}
     >
-      <Text
-        style={[styles.segmentText, active && styles.segmentTextActive]}
-      >
+      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
         {title}
       </Text>
     </Pressable>
@@ -180,27 +188,29 @@ function ReportFeedCard({
   onToggle: () => void;
   onDelete: () => void;
 }) {
-  const riskLevel = getReportRiskLevel(report.aiRiskScore);
-  const riskColor = getRiskColor(riskLevel);
-  const riskLabel = getRiskLevelLabel(report.aiRiskScore);
+  const issueLevel = getReportIssueLevel(report);
+  const issueColor = getIssueColor(issueLevel);
+  const issueLabel = getRiskLevelLabel(
+    Number(report.priorityScore ?? report.aiRiskScore ?? 0)
+  );
 
   return (
     <View style={styles.feedCard}>
       <Pressable onPress={onToggle} style={styles.feedHeader}>
-        <View style={[styles.feedIconBox, { backgroundColor: `${riskColor}1A` }]}>
-          <CircleAlert size={21} color={riskColor} />
+        <View style={[styles.feedIconBox, { backgroundColor: `${issueColor}1A` }]}>
+          <CircleAlert size={21} color={issueColor} />
         </View>
 
         <View style={styles.feedHeaderText}>
           <Text numberOfLines={1} style={styles.feedTitle}>
-            {report.locationName || report.title}
+            {report.problemType || report.title}
           </Text>
 
           <View style={styles.feedMetaRow}>
             <Text style={styles.feedMeta}>{formatDateTime(report.createdAt)}</Text>
             <Text style={styles.feedDot}>|</Text>
-            <Text style={[styles.feedSeverity, { color: riskColor }]}>
-              Severity: {report.severity}
+            <Text style={[styles.feedSeverity, { color: issueColor }]}>
+              {getIssueStatusLabel(report.status)}
             </Text>
           </View>
         </View>
@@ -225,10 +235,18 @@ function ReportFeedCard({
             </Text>
           </View>
 
+          <View style={styles.feedLocationRow}>
+            <Building2 size={16} color={COLORS.mutedText} />
+            <Text style={styles.feedLocationText}>
+              {report.buildingName || "No building specified"}{" "}
+              {report.roomNumber ? `• Room ${report.roomNumber}` : ""}
+            </Text>
+          </View>
+
           <View style={styles.feedFooter}>
-            <View style={[styles.riskBadge, { backgroundColor: `${riskColor}1A` }]}>
-              <Text style={[styles.riskBadgeText, { color: riskColor }]}>
-                {riskLabel} • {report.aiRiskScore}
+            <View style={[styles.riskBadge, { backgroundColor: `${issueColor}1A` }]}>
+              <Text style={[styles.riskBadgeText, { color: issueColor }]}>
+                {issueLabel} • {report.priorityScore ?? report.aiRiskScore}/100
               </Text>
             </View>
 
@@ -239,6 +257,53 @@ function ReportFeedCard({
             <View style={styles.aiBox}>
               <Brain size={16} color={COLORS.primary} />
               <Text style={styles.aiText}>{report.aiSummary}</Text>
+            </View>
+          ) : null}
+
+          {report.aiRecommendedAction ? (
+            <View style={styles.actionBox}>
+              <Wrench size={16} color={COLORS.warningDark} />
+              <Text style={styles.actionText}>{report.aiRecommendedAction}</Text>
+            </View>
+          ) : null}
+
+          {report.evidence?.length ? (
+            <View style={styles.evidenceBox}>
+              <Text style={styles.evidenceTitle}>Student evidence</Text>
+
+              <View style={styles.evidenceGrid}>
+                {report.evidence.map((item) => (
+                  <Image
+                    key={item.uri}
+                    source={{ uri: item.uri }}
+                    style={styles.evidenceImage}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {report.resolutionEvidence?.length ? (
+            <View style={styles.evidenceBoxResolved}>
+              <Text style={styles.evidenceTitleResolved}>
+                Finished work evidence
+              </Text>
+
+              <View style={styles.evidenceGrid}>
+                {report.resolutionEvidence.map((item) => (
+                  <Image
+                    key={item.uri}
+                    source={{ uri: item.uri }}
+                    style={styles.evidenceImage}
+                  />
+                ))}
+              </View>
+
+              {report.resolutionSummary ? (
+                <Text style={styles.resolutionText}>
+                  {report.resolutionSummary}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -266,14 +331,14 @@ export default function RiskMapScreen() {
   const [loadingReports, setLoadingReports] = useState(false);
   const [usingBackend, setUsingBackend] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
-  const [feedMode, setFeedMode] = useState<FeedMode>("mapped");
+  const [feedMode, setFeedMode] = useState<FeedMode>("open");
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
 
   const fetchBackendReports = useCallback(async () => {
     try {
       setLoadingReports(true);
 
-      const reports = await getIncidentReportsApi();
+      const reports = await getIncidentReportsApi({ limit: 100 });
 
       setBackendReports(reports);
       setUsingBackend(true);
@@ -303,10 +368,30 @@ export default function RiskMapScreen() {
     );
   }, [reports]);
 
-  const visibleReports = feedMode === "mapped" ? mappedReports : reports;
+  const visibleReports = useMemo(() => {
+    if (feedMode === "open") {
+      return reports.filter(isOpenReport);
+    }
+
+    if (feedMode === "urgent") {
+      return reports.filter(
+        (report) =>
+          report.priority === "high" ||
+          report.priority === "critical" ||
+          Number(report.priorityScore ?? report.aiRiskScore ?? 0) >= 70
+      );
+    }
+
+    if (feedMode === "resolved") {
+      return reports.filter(isResolvedReport);
+    }
+
+    return reports;
+  }, [feedMode, reports]);
 
   const stats = getRiskStats(reports);
   const topPattern = getTopIncidentPattern(reports);
+  const topLocation = getTopCampusLocation(reports);
 
   const mapCenter = mappedReports[0]?.location
     ? {
@@ -316,20 +401,22 @@ export default function RiskMapScreen() {
     : DEFAULT_MAP_CENTER;
 
   const dangerMarkers = mappedReports.map((report) => {
-    const riskLevel = getReportRiskLevel(report.aiRiskScore);
+    const issueLevel = getReportIssueLevel(report);
 
     return {
       latitude: report.location?.latitude ?? DEFAULT_MAP_CENTER.latitude,
       longitude: report.location?.longitude ?? DEFAULT_MAP_CENTER.longitude,
-      title: report.locationName || report.title,
-      description: report.description,
-      riskLevel,
-      riskScore: report.aiRiskScore,
+      title: report.locationName || report.problemType || report.title,
+      description: `${report.problemType || report.title} • ${getIssueStatusLabel(
+        report.status
+      )}`,
+      riskLevel: issueLevel,
+      riskScore: Number(report.priorityScore ?? report.aiRiskScore ?? 0),
     };
   });
 
   const handleDeleteReport = (reportId: string) => {
-    Alert.alert("Delete Report", "Remove this incident report?", [
+    Alert.alert("Delete Report", "Remove this campus issue report?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -364,7 +451,7 @@ export default function RiskMapScreen() {
 
     Alert.alert(
       "Clear All Local Reports",
-      "This will delete all local incident reports saved on this phone. Continue?",
+      "This will delete all local campus issue reports saved on this phone. Continue?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -379,57 +466,60 @@ export default function RiskMapScreen() {
   const handleAddDemoReports = async () => {
     const demoReports = [
       {
-        category: "phone_snatch" as const,
-        severity: "high" as const,
-        areaType: "off_campus" as const,
-        locationName: "Ayeduase Hostel Road",
+        category: "lecture_room_fault" as const,
+        severity: "medium" as const,
+        priority: "medium" as const,
+        areaType: "on_campus" as const,
+        locationName: "JQB Room 12",
+        buildingName: "JQB",
+        roomNumber: "12",
+        landmark: "Near the front entrance",
         description:
-          "Two people on a motorbike snatched a student's phone near the junction.",
+          "The projector in JQB Room 12 is not working and students cannot see the lecture slides.",
         location: {
-          latitude: 6.6743,
-          longitude: -1.5712,
+          latitude: 5.6506,
+          longitude: -0.187,
           accuracy: 20,
         },
-        victimWasAlone: true,
-        weaponInvolved: false,
-        attackerMode: "Motorbike",
-        lightingCondition: "Poor lighting",
+        evidence: [],
         anonymous: true,
       },
       {
-        category: "forced_momo_withdrawal" as const,
+        category: "electrical_fault" as const,
         severity: "critical" as const,
-        areaType: "off_campus" as const,
-        locationName: "Quiet Road Near Hostel",
+        priority: "critical" as const,
+        areaType: "on_campus" as const,
+        locationName: "Balme Library Corridor",
+        buildingName: "Balme Library",
+        roomNumber: "",
+        landmark: "Main corridor",
         description:
-          "Student was threatened and forced to transfer mobile money while walking alone.",
+          "There is an exposed electrical wire near the corridor and it may shock students.",
         location: {
-          latitude: 6.6751,
-          longitude: -1.5721,
+          latitude: 5.6501,
+          longitude: -0.1864,
           accuracy: 25,
         },
-        victimWasAlone: true,
-        weaponInvolved: true,
-        attackerMode: "Walking group",
-        lightingCondition: "Dark road",
+        evidence: [],
         anonymous: true,
       },
       {
-        category: "poor_lighting" as const,
+        category: "sanitation_issue" as const,
         severity: "medium" as const,
-        areaType: "off_campus" as const,
-        locationName: "Hostel Junction",
+        priority: "medium" as const,
+        areaType: "on_campus" as const,
+        locationName: "Commonwealth Hall Washroom",
+        buildingName: "Commonwealth Hall",
+        roomNumber: "",
+        landmark: "Ground floor washroom",
         description:
-          "Streetlights are not working, and the area becomes very dark at night.",
+          "The washroom is dirty and water is leaking from one of the taps.",
         location: {
-          latitude: 6.6738,
-          longitude: -1.5709,
+          latitude: 5.6512,
+          longitude: -0.1882,
           accuracy: 30,
         },
-        victimWasAlone: false,
-        weaponInvolved: false,
-        attackerMode: "",
-        lightingCondition: "Very poor lighting",
+        evidence: [],
         anonymous: true,
       },
     ];
@@ -447,7 +537,7 @@ export default function RiskMapScreen() {
 
       Alert.alert(
         "Demo Reports Added",
-        "Sample reports were added locally and synced to MongoDB."
+        "Sample University of Ghana campus issue reports were added and synced."
       );
     } catch (error) {
       Alert.alert(
@@ -461,10 +551,11 @@ export default function RiskMapScreen() {
     <Screen scroll>
       <View style={styles.header}>
         <View style={styles.headerTextBox}>
-          <Text style={styles.overline}>Live risk intelligence</Text>
-          <Text style={styles.title}>Risk Map</Text>
+          <Text style={styles.overline}>University of Ghana</Text>
+          <Text style={styles.title}>Campus Issue Map</Text>
           <Text style={styles.subtitle}>
-            View danger zones, mapped reports, and recent safety incidents.
+            View reported campus problems, unresolved hotspots, AI-routed cases,
+            and completed fixes.
           </Text>
         </View>
 
@@ -487,16 +578,16 @@ export default function RiskMapScreen() {
       <View style={styles.mapCard}>
         <View style={styles.mapTopRow}>
           <View>
-            <Text style={styles.mapTitle}>Visual Risk Map</Text>
+            <Text style={styles.mapTitle}>Visual Campus Issue Map</Text>
             <Text style={styles.mapSubtitle}>
-              {mappedReports.length} mapped report
+              {mappedReports.length} mapped issue
               {mappedReports.length === 1 ? "" : "s"} found
             </Text>
           </View>
 
           <View style={styles.mapPill}>
             <LocateFixed size={14} color={COLORS.primary} />
-            <Text style={styles.mapPillText}>Around me</Text>
+            <Text style={styles.mapPillText}>UG Legon</Text>
           </View>
         </View>
 
@@ -504,16 +595,17 @@ export default function RiskMapScreen() {
           <LeafletMapView
             style={styles.map}
             center={mapCenter}
-            zoom={15}
+            zoom={16}
             dangerMarkers={dangerMarkers as any}
           />
 
           {mappedReports.length === 0 ? (
             <View style={styles.mapEmptyOverlay}>
               <MapPin size={28} color={COLORS.primary} />
-              <Text style={styles.mapEmptyTitle}>No mapped reports yet</Text>
+              <Text style={styles.mapEmptyTitle}>No mapped issues yet</Text>
               <Text style={styles.mapEmptyText}>
-                Add reports with GPS coordinates to display danger markers here.
+                Reports with GPS coordinates will appear here as campus issue
+                markers.
               </Text>
             </View>
           ) : null}
@@ -523,21 +615,21 @@ export default function RiskMapScreen() {
       <View style={styles.overviewRow}>
         <View style={styles.overviewCard}>
           <Text style={styles.overviewValue}>{stats.totalReports}</Text>
-          <Text style={styles.overviewLabel}>Total Reports</Text>
+          <Text style={styles.overviewLabel}>Total</Text>
         </View>
 
         <View style={styles.overviewCard}>
-          <Text style={[styles.overviewValue, { color: COLORS.danger }]}>
-            {stats.criticalReports}
+          <Text style={[styles.overviewValue, { color: COLORS.info }]}>
+            {stats.openReports}
           </Text>
-          <Text style={styles.overviewLabel}>Critical</Text>
+          <Text style={styles.overviewLabel}>Open</Text>
         </View>
 
         <View style={styles.overviewCard}>
-          <Text style={[styles.overviewValue, { color: COLORS.warning }]}>
-            {stats.averageRiskScore}
+          <Text style={[styles.overviewValue, { color: COLORS.primary }]}>
+            {stats.resolvedReports}
           </Text>
-          <Text style={styles.overviewLabel}>Avg. Score</Text>
+          <Text style={styles.overviewLabel}>Resolved</Text>
         </View>
       </View>
 
@@ -549,25 +641,29 @@ export default function RiskMapScreen() {
         <View style={styles.summaryContent}>
           <Text style={styles.summaryTitle}>
             {topPattern
-              ? `${topPattern.title} is the most reported pattern`
-              : "No dominant pattern yet"}
+              ? `${topPattern.title} is the most reported issue`
+              : "No dominant issue yet"}
           </Text>
 
           <Text style={styles.summaryText}>
             {topPattern
               ? `${topPattern.count} report${
                   topPattern.count > 1 ? "s" : ""
-                } match this pattern. SafeWalk AI will use this to improve route warnings.`
-              : "More reports are needed before SafeWalk AI can detect strong safety patterns."}
+                } match this issue type. ${
+                  topLocation
+                    ? `${topLocation.locationName} has the highest report concentration.`
+                    : ""
+                }`
+              : "More campus issue reports are needed before SafeCampus AI can detect strong patterns."}
           </Text>
         </View>
       </View>
 
       <View style={styles.feedHeaderSection}>
         <View>
-          <Text style={styles.feedSectionTitle}>Emergency Reports</Text>
+          <Text style={styles.feedSectionTitle}>Campus Issue Reports</Text>
           <Text style={styles.feedSectionSubtitle}>
-            Review recent safety reports submitted by students.
+            Track what students reported and what authorities have resolved.
           </Text>
         </View>
 
@@ -581,13 +677,25 @@ export default function RiskMapScreen() {
 
       <View style={styles.segmentContainer}>
         <SegmentButton
-          title="Mapped Reports"
-          active={feedMode === "mapped"}
-          onPress={() => setFeedMode("mapped")}
+          title="Open"
+          active={feedMode === "open"}
+          onPress={() => setFeedMode("open")}
         />
 
         <SegmentButton
-          title="All Reports"
+          title="Urgent"
+          active={feedMode === "urgent"}
+          onPress={() => setFeedMode("urgent")}
+        />
+
+        <SegmentButton
+          title="Resolved"
+          active={feedMode === "resolved"}
+          onPress={() => setFeedMode("resolved")}
+        />
+
+        <SegmentButton
+          title="All"
           active={feedMode === "all"}
           onPress={() => setFeedMode("all")}
         />
@@ -599,14 +707,11 @@ export default function RiskMapScreen() {
             <ShieldCheck size={40} color={COLORS.primary} />
           </View>
 
-          <Text style={styles.emptyTitle}>
-            {feedMode === "mapped" ? "No mapped reports" : "No reports yet"}
-          </Text>
+          <Text style={styles.emptyTitle}>No reports in this view</Text>
 
           <Text style={styles.emptyText}>
-            {feedMode === "mapped"
-              ? "Reports without GPS coordinates will not appear on the map. Add demo reports to test the map."
-              : "Once students report incidents, they will appear here."}
+            Submit a campus issue or add demo reports to test the full reporting
+            and resolution workflow.
           </Text>
 
           <AppButton
@@ -966,7 +1071,7 @@ const styles = StyleSheet.create({
   },
 
   segmentText: {
-    fontSize: FONT_SIZE.sm,
+    fontSize: 11,
     color: COLORS.mutedText,
     fontWeight: "900",
   },
@@ -1115,6 +1220,77 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     color: COLORS.primaryDark,
     fontWeight: "700",
+    lineHeight: 18,
+  },
+
+  actionBox: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.warningLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  actionText: {
+    flex: 1,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.warningDark,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+
+  evidenceBox: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  evidenceBoxResolved: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(5, 150, 105, 0.18)",
+  },
+
+  evidenceTitle: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.mutedText,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: SPACING.sm,
+  },
+
+  evidenceTitleResolved: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primaryDark,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: SPACING.sm,
+  },
+
+  evidenceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  evidenceImage: {
+    width: 82,
+    height: 82,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+
+  resolutionText: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primaryDark,
+    fontWeight: "800",
     lineHeight: 18,
   },
 

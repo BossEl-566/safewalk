@@ -4,10 +4,10 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   House,
-  Footprints,
-  ShieldAlert,
+  ClipboardList,
   Map,
   UserRound,
+  ShieldCheck,
 } from "lucide-react-native";
 
 import {
@@ -24,12 +24,12 @@ const TAB_CONFIG = {
     Icon: House,
   },
   "walk-safe": {
-    label: "Walk",
-    Icon: Footprints,
+    label: "Track",
+    Icon: ShieldCheck,
   },
   report: {
     label: "Report",
-    Icon: ShieldAlert,
+    Icon: ClipboardList,
   },
   "risk-map": {
     label: "Map",
@@ -48,9 +48,7 @@ function CustomTabBar({ state, navigation }: any) {
     <View
       style={[
         styles.tabBarContainer,
-        {
-          bottom: insets.bottom > 0 ? insets.bottom + 8 : 12,
-        },
+        { bottom: insets.bottom > 0 ? insets.bottom + 8 : 12 },
       ]}
     >
       {state.routes.map((route: any, index: number) => {
@@ -123,40 +121,11 @@ export default function TabsLayout() {
           headerShown: false,
         }}
       >
-        <Tabs.Screen
-          name="home"
-          options={{
-            title: "Home",
-          }}
-        />
-
-        <Tabs.Screen
-          name="walk-safe"
-          options={{
-            title: "Walk",
-          }}
-        />
-
-        <Tabs.Screen
-          name="report"
-          options={{
-            title: "Report",
-          }}
-        />
-
-        <Tabs.Screen
-          name="risk-map"
-          options={{
-            title: "Map",
-          }}
-        />
-
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: "Profile",
-          }}
-        />
+        <Tabs.Screen name="home" options={{ title: "Home" }} />
+        <Tabs.Screen name="walk-safe" options={{ title: "Track" }} />
+        <Tabs.Screen name="report" options={{ title: "Report" }} />
+        <Tabs.Screen name="risk-map" options={{ title: "Map" }} />
+        <Tabs.Screen name="profile" options={{ title: "Profile" }} />
       </Tabs>
     </>
   );

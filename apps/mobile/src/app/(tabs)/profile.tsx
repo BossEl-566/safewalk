@@ -361,21 +361,6 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={styles.infoCard}>
-        <View style={styles.infoIcon}>
-          <BellRing size={22} color={COLORS.primary} />
-        </View>
-
-        <View style={styles.infoTextBox}>
-          <Text style={styles.infoTitle}>Presentation reminder</Text>
-          <Text style={styles.infoText}>
-            Emphasize that this is not just a management system. It includes AI
-            classification, authority routing, status tracking, escalation, and
-            evidence-based resolution.
-          </Text>
-        </View>
-      </View>
-
       <View style={{ height: insets.bottom + 130 }} />
     </Screen>
   );

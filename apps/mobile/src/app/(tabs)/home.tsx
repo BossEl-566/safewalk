@@ -453,6 +453,14 @@ export default function HomeScreen() {
           />
 
           <QuickActionCard
+  title="Live Safe Navigation"
+  description="Start a monitored walk on campus with destination, nearby issue checks, and trusted contact support."
+  tone="primary"
+  icon={<ShieldCheck size={23} color={COLORS.primary} />}
+  onPress={() => router.push("/(tabs)/walk-safe")}
+/>
+
+          <QuickActionCard
             title="Authority Dashboard"
             description="Accept, start work, resolve, close, or escalate reported cases."
             tone="warning"

@@ -175,7 +175,7 @@ export default function WalkSafeScreen() {
 
       Alert.alert(
         "Destination Error",
-        "SafeWalk AI could not get coordinates for this destination."
+        "SafeCampus AI could not get coordinates for this destination."
       );
     } finally {
       setSearchingDestination(false);
@@ -277,7 +277,7 @@ export default function WalkSafeScreen() {
 
         Alert.alert(
           "Nearby Risk Detected",
-          `SafeWalk AI found ${nearbyRiskWarnings.length} risk report${
+          `SafeCampus AI found ${nearbyRiskWarnings.length} nearby campus issue report${
             nearbyRiskWarnings.length > 1 ? "s" : ""
           } near your current area.\n\nHighest risk: ${
             highestRisk.title
@@ -321,12 +321,13 @@ export default function WalkSafeScreen() {
           <ShieldCheck size={34} color={COLORS.primary} />
         </View>
 
-        <Text style={styles.heroTitle}>Walk Safe Mode</Text>
+        <Text style={styles.heroTitle}>Campus Safe Navigation</Text>
 
         <Text style={styles.heroText}>
-          Start a monitored walk when moving alone. SafeWalk AI will keep your
-          route session active until you arrive safely.
-        </Text>
+  Start a monitored walk when moving around campus. SafeCampus AI keeps your
+  walk session active, checks nearby reported issues, and alerts your trusted
+  contact if something goes wrong.
+</Text>
       </View>
 
       <View style={styles.section}>
@@ -334,6 +335,26 @@ export default function WalkSafeScreen() {
           title="Where are you going?"
           subtitle="Search your hostel, apartment, lecture hall, library, bus stop, or any destination."
         />
+        <View style={styles.safeRouteCard}>
+  <View style={styles.safeRouteIcon}>
+    <ShieldCheck size={26} color={COLORS.primary} />
+  </View>
+
+  <View style={styles.safeRouteContent}>
+    <Text style={styles.safeRouteTitle}>Track My Campus Reports</Text>
+    <Text style={styles.safeRouteText}>
+      View your submitted campus issue reports, authority progress, resolution
+      evidence, and confirmation status.
+    </Text>
+  </View>
+
+  <AppButton
+    title="Track"
+    onPress={() => router.push("/reports/track")}
+    variant="secondary"
+    style={styles.safeRouteButton}
+  />
+</View>
 
         <View style={styles.safeRouteCard}>
           <View style={styles.safeRouteIcon}>
@@ -343,9 +364,9 @@ export default function WalkSafeScreen() {
           <View style={styles.safeRouteContent}>
             <Text style={styles.safeRouteTitle}>Live Safe Navigation</Text>
             <Text style={styles.safeRouteText}>
-              Search a destination, view the route, and let SafeWalk AI monitor
-              your movement.
-            </Text>
+  Search a campus destination, view the route, and let SafeCampus AI monitor
+  your movement.
+</Text>
           </View>
 
           <AppButton
@@ -542,7 +563,7 @@ export default function WalkSafeScreen() {
             <Text style={styles.noContactsTitle}>No emergency contacts</Text>
 
             <Text style={styles.noContactsText}>
-              Add a trusted contact before using Walk Safe mode.
+              Add a trusted contact before using Campus Safe Navigation.
             </Text>
 
             <AppButton
@@ -569,8 +590,8 @@ export default function WalkSafeScreen() {
         <MapPin size={22} color={COLORS.primary} />
 
         <Text style={styles.infoText}>
-          Your current location will be captured when Walk Safe starts. The
-          selected destination helps SafeWalk AI understand where you are going.
+         Your current location will be captured when Campus Safe Navigation starts.
+The selected destination helps SafeCampus AI understand where you are going.
         </Text>
       </View>
 

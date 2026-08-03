@@ -247,6 +247,13 @@ export default function ProfileScreen() {
 
       <View style={styles.menuList}>
         <MenuCard
+  title="Live Safe Navigation"
+  description="Start a monitored campus walk with destination tracking and trusted contact support."
+  icon={<ShieldAlert size={23} color={COLORS.primary} />}
+  onPress={() => router.push("/(tabs)/walk-safe")}
+/>
+
+        <MenuCard
           title="Report Campus Issue"
           description="Submit a campus issue with location, description, and photo evidence."
           icon={<ClipboardList size={23} color={COLORS.primary} />}
@@ -276,6 +283,13 @@ export default function ProfileScreen() {
           icon={<FileClock size={23} color={COLORS.warning} />}
           onPress={() => router.push("/activity")}
         />
+        <MenuCard
+  title="Track My Campus Reports"
+  description="View your submitted reports, authority progress, resolution evidence, and confirmation status."
+  tone="warning"
+  icon={<FileClock size={23} color={COLORS.warning} />}
+  onPress={() => router.push("/reports/track")}
+/>
       </View>
 
       <View style={styles.sectionHeader}>

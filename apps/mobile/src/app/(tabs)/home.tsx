@@ -365,10 +365,6 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.heroContent}>
-            <View style={styles.heroPill}>
-              <Sparkles size={15} color={COLORS.primaryDark} />
-              <Text style={styles.heroPillText}>AI-powered campus response</Text>
-            </View>
 
             <Text style={styles.heroTitle}>Report. Route. Resolve.</Text>
 

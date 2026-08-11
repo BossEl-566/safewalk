@@ -263,10 +263,15 @@ async function updateIncidentReportStatus(req, res) {
       note = "",
       actorName = "Authority User",
       actorRole = "authority",
-      assignedToName = "",
+
+      // Task assignment fields
+      assignedToName,
+      assignedUnit,
+
+      // Resolution fields
       resolutionSummary = "",
       resolutionEvidence = [],
-    } = req.body;
+    } = req.body || {};
 
     const allowedStatuses = [
       "submitted",
@@ -298,16 +303,24 @@ async function updateIncidentReportStatus(req, res) {
 
     report.status = status;
 
-    if (assignedToName) {
+    /**
+     * Task assignment
+     * This allows admin to assign the issue to a named responder/team.
+     */
+    if (assignedToName !== undefined) {
       report.assignedToName = assignedToName;
     }
 
+    if (assignedUnit !== undefined) {
+      report.assignedUnit = assignedUnit;
+    }
+
     if (status === "assigned") {
-      report.assignedAt = new Date();
+      report.assignedAt = report.assignedAt || new Date();
     }
 
     if (status === "in_progress") {
-      report.inProgressAt = new Date();
+      report.inProgressAt = report.inProgressAt || new Date();
     }
 
     if (status === "resolved") {
@@ -321,12 +334,16 @@ async function updateIncidentReportStatus(req, res) {
     }
 
     if (status === "escalated") {
-      report.escalationLevel += 1;
+      report.escalationLevel = Number(report.escalationLevel || 0) + 1;
     }
 
     report.statusHistory.push({
       status,
-      note,
+      note:
+        note ||
+        (status === "assigned"
+          ? `Task assigned to ${assignedToName || "responder"}.`
+          : "Report status updated."),
       actorName,
       actorRole,
     });

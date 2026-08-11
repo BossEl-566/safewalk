@@ -48,7 +48,17 @@ export type UpdateIncidentStatusPayload = {
   note?: string;
   actorName?: string;
   actorRole?: "student" | "ai" | "authority" | "admin" | "system";
+
+  /**
+   * Used when an authority assigns a report to a specific responder.
+   */
   assignedToName?: string;
+
+  /**
+   * Used when the AI-routed unit is changed manually by the authority.
+   */
+  assignedUnit?: string;
+
   resolutionSummary?: string;
   resolutionEvidence?: ReportEvidence[];
 };

@@ -5,9 +5,11 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -199,9 +201,11 @@ function EmptyCard({
 function CampusReportCard({
   report,
   onUpdateStatus,
+  onAssignTask,
 }: {
   report: IncidentReport;
   onUpdateStatus: (report: IncidentReport, status: IncidentStatus) => void;
+  onAssignTask: (report: IncidentReport) => void;
 }) {
   const priorityColor = getPriorityColor(report.priority, report.priorityScore);
   const statusColor = getStatusColor(report.status);
@@ -286,6 +290,12 @@ function CampusReportCard({
             Unit: {report.assignedUnit || report.aiSuggestedUnit || "Not assigned"}
           </Text>
         </View>
+        <View style={styles.infoRow}>
+        <UserCheck size={16} color={COLORS.mutedText} />
+        <Text style={styles.infoRowText}>
+          Assigned to: {report.assignedToName || "No responder assigned yet"}
+        </Text>
+      </View>
 
         <View style={styles.infoRow}>
           <MapPin size={16} color={COLORS.mutedText} />
@@ -377,12 +387,12 @@ function CampusReportCard({
         ) : null}
 
         {canAccept ? (
-          <ActionButton
-            title="Accept"
-            icon={<UserCheck size={16} color={COLORS.primaryDark} />}
-            onPress={() => onUpdateStatus(report, "assigned")}
-          />
-        ) : null}
+  <ActionButton
+    title="Assign Task"
+    icon={<UserCheck size={16} color={COLORS.primaryDark} />}
+    onPress={() => onAssignTask(report)}
+  />
+) : null}
 
         {canStart ? (
           <ActionButton
@@ -499,6 +509,10 @@ export default function AdminDashboardScreen() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
+  const [assignmentReport, setAssignmentReport] =
+  useState<IncidentReport | null>(null);
+const [assigneeName, setAssigneeName] = useState("");
+const [assignmentNote, setAssignmentNote] = useState("");
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -522,6 +536,67 @@ export default function AdminDashboardScreen() {
       fetchOverview();
     }, [fetchOverview])
   );
+
+  const openAssignmentModal = (report: IncidentReport) => {
+  setAssignmentReport(report);
+  setAssigneeName(report.assignedToName || "");
+  setAssignmentNote(
+    report.aiRecommendedAction ||
+      `Handle this ${report.problemType || report.title} report.`
+  );
+};
+
+const closeAssignmentModal = () => {
+  setAssignmentReport(null);
+  setAssigneeName("");
+  setAssignmentNote("");
+};
+
+const handleAssignTask = async () => {
+  if (!assignmentReport) return;
+
+  if (!assigneeName.trim()) {
+    Alert.alert(
+      "Assignee Required",
+      "Please enter the name of the person or team handling this task."
+    );
+    return;
+  }
+
+  if (!assignmentNote.trim()) {
+    Alert.alert(
+      "Task Instruction Required",
+      "Please enter the task instruction for the assigned responder."
+    );
+    return;
+  }
+
+  try {
+    setUpdatingReportId(assignmentReport.id);
+
+    await updateIncidentReportStatusApi(assignmentReport.id, {
+      status: "assigned",
+      actorName: "Authority Officer",
+      actorRole: "authority",
+      assignedToName: assigneeName.trim(),
+      assignedUnit:
+        assignmentReport.assignedUnit ||
+        assignmentReport.aiSuggestedUnit ||
+        "Responsible Unit",
+      note: `Task assigned to ${assigneeName.trim()}. Instruction: ${assignmentNote.trim()}`,
+    });
+
+    closeAssignmentModal();
+    await fetchOverview();
+  } catch (error) {
+    Alert.alert(
+      "Assignment Failed",
+      "Could not assign this task. Check that your backend is running."
+    );
+  } finally {
+    setUpdatingReportId(null);
+  }
+};
 
   const handleUpdateReportStatus = (
   report: IncidentReport,
@@ -778,10 +853,11 @@ export default function AdminDashboardScreen() {
           <View style={styles.reportList}>
             {overview.openCampusReports.map((report) => (
               <CampusReportCard
-                key={report.id}
-                report={report}
-                onUpdateStatus={handleUpdateReportStatus}
-              />
+  key={report.id}
+  report={report}
+  onUpdateStatus={handleUpdateReportStatus}
+  onAssignTask={openAssignmentModal}
+/>
             ))}
           </View>
         ) : (
@@ -803,10 +879,11 @@ export default function AdminDashboardScreen() {
           <View style={styles.reportList}>
             {overview.urgentCampusReports.map((report) => (
               <CampusReportCard
-                key={`urgent-${report.id}`}
-                report={report}
-                onUpdateStatus={handleUpdateReportStatus}
-              />
+  key={`urgent-${report.id}`}
+  report={report}
+  onUpdateStatus={handleUpdateReportStatus}
+  onAssignTask={openAssignmentModal}
+/>
             ))}
           </View>
         ) : (
@@ -832,6 +909,73 @@ export default function AdminDashboardScreen() {
           </Text>
         </View>
       </View>
+      <Modal
+  visible={!!assignmentReport}
+  transparent
+  animationType="slide"
+  onRequestClose={closeAssignmentModal}
+>
+  <View style={styles.modalBackdrop}>
+    <View style={styles.assignmentModal}>
+      <View style={styles.assignmentHeader}>
+        <View style={styles.assignmentIcon}>
+          <UserCheck size={24} color={COLORS.primary} />
+        </View>
+
+        <View style={styles.assignmentTitleBox}>
+          <Text style={styles.assignmentTitle}>Assign Task</Text>
+          <Text style={styles.assignmentSubtitle}>
+            {assignmentReport?.problemType || assignmentReport?.title}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.assignmentInfoBox}>
+        <Text style={styles.assignmentInfoLabel}>AI suggested unit</Text>
+        <Text style={styles.assignmentInfoText}>
+          {assignmentReport?.assignedUnit ||
+            assignmentReport?.aiSuggestedUnit ||
+            "Responsible Unit"}
+        </Text>
+      </View>
+
+      <Text style={styles.modalLabel}>Assigned responder / team</Text>
+      <TextInput
+        value={assigneeName}
+        onChangeText={setAssigneeName}
+        placeholder="Example: Technician Kwame / Maintenance Team A"
+        placeholderTextColor={COLORS.softText}
+        style={styles.modalInput}
+      />
+
+      <Text style={styles.modalLabel}>Task instruction</Text>
+      <TextInput
+        value={assignmentNote}
+        onChangeText={setAssignmentNote}
+        placeholder="Example: Inspect and replace the faulty projector."
+        placeholderTextColor={COLORS.softText}
+        style={[styles.modalInput, styles.modalTextArea]}
+        multiline
+      />
+
+      <View style={styles.modalActions}>
+        <Pressable
+          onPress={closeAssignmentModal}
+          style={styles.modalCancelButton}
+        >
+          <Text style={styles.modalCancelText}>Cancel</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleAssignTask}
+          style={styles.modalAssignButton}
+        >
+          <Text style={styles.modalAssignText}>Assign Task</Text>
+        </Pressable>
+      </View>
+    </View>
+  </View>
+</Modal>
 
       <View style={{ height: insets.bottom + 130 }} />
     </Screen>
@@ -1386,5 +1530,138 @@ resolutionSummaryText: {
   color: COLORS.primaryDark,
   fontWeight: "800",
   lineHeight: 18,
+},
+modalBackdrop: {
+  flex: 1,
+  backgroundColor: "rgba(2, 6, 23, 0.58)",
+  justifyContent: "flex-end",
+  padding: SPACING.lg,
+},
+
+assignmentModal: {
+  backgroundColor: COLORS.surface,
+  borderRadius: 30,
+  padding: SPACING.lg,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  ...SHADOWS.card,
+},
+
+assignmentHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.md,
+  marginBottom: SPACING.lg,
+},
+
+assignmentIcon: {
+  width: 52,
+  height: 52,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primaryLight,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+assignmentTitleBox: {
+  flex: 1,
+},
+
+assignmentTitle: {
+  fontSize: FONT_SIZE.lg,
+  color: COLORS.text,
+  fontWeight: "900",
+},
+
+assignmentSubtitle: {
+  marginTop: 3,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+  lineHeight: 18,
+},
+
+assignmentInfoBox: {
+  backgroundColor: COLORS.primaryLight,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  marginBottom: SPACING.lg,
+},
+
+assignmentInfoLabel: {
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.primaryDark,
+  fontWeight: "900",
+  textTransform: "uppercase",
+},
+
+assignmentInfoText: {
+  marginTop: 4,
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.primaryDark,
+  fontWeight: "800",
+  lineHeight: 20,
+},
+
+modalLabel: {
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.text,
+  fontWeight: "900",
+  textTransform: "uppercase",
+  marginBottom: SPACING.sm,
+},
+
+modalInput: {
+  minHeight: 54,
+  borderRadius: RADIUS.lg,
+  backgroundColor: COLORS.surface,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  paddingHorizontal: SPACING.lg,
+  paddingVertical: SPACING.md,
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.text,
+  fontWeight: "700",
+  marginBottom: SPACING.lg,
+},
+
+modalTextArea: {
+  minHeight: 110,
+  textAlignVertical: "top",
+},
+
+modalActions: {
+  flexDirection: "row",
+  gap: SPACING.md,
+},
+
+modalCancelButton: {
+  flex: 1,
+  minHeight: 52,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.surfaceMuted,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+modalCancelText: {
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.mutedText,
+  fontWeight: "900",
+},
+
+modalAssignButton: {
+  flex: 1,
+  minHeight: 52,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primary,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+modalAssignText: {
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.white,
+  fontWeight: "900",
 },
 });

@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -12,26 +12,21 @@ import * as SMS from "expo-sms";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  BellRing,
-  Brain,
-  Building2,
-  Camera,
-  CheckCircle2,
+  Bell,
   ChevronRight,
-  CirclePlus,
   ClipboardList,
   ContactRound,
-  Database,
-  Map,
-  MapPin,
+  MapPinned,
+  Megaphone,
   Menu,
-  RefreshCcw,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
-  TriangleAlert,
-  UsersRound,
-  Wrench,
+  Route,
+  BarChart3,
+  CheckCircle2,
+  CircleAlert,
+  FileText,
+  CirclePlus,
 } from "lucide-react-native";
 
 import { Screen } from "../../components/Screen";
@@ -50,46 +45,49 @@ import { createSOSAlertApi } from "../../lib/sosApi";
 import { getIncidentReportsApi } from "../../lib/incidentApi";
 import { IncidentReport } from "../../types/incident";
 
-type QuickActionProps = {
+type ToolCardProps = {
   title: string;
-  description: string;
+  subtitle: string;
   icon: ReactNode;
+  tone?: "green" | "red" | "blue" | "purple";
   onPress: () => void;
-  tone?: "primary" | "danger" | "warning" | "info";
 };
 
-type WorkflowCardProps = {
-  number: string;
+type ReportPreviewCardProps = {
   title: string;
-  text: string;
+  subtitle: string;
+  status: string;
+  statusTone?: "warning" | "success";
   icon: ReactNode;
 };
 
-function getToneColors(tone: QuickActionProps["tone"] = "primary") {
-  if (tone === "danger") {
+const HERO_IMAGE = require("../../../assets/images/home-hero-campus.png");
+
+function getTone(tone: ToolCardProps["tone"] = "green") {
+  if (tone === "red") {
     return {
-      color: COLORS.danger,
-      lightColor: COLORS.dangerLight,
+      iconBg: "#FEE2E2",
+      iconColor: "#DC2626",
     };
   }
 
-  if (tone === "warning") {
+  if (tone === "blue") {
     return {
-      color: COLORS.warning,
-      lightColor: COLORS.warningLight,
+      iconBg: "#DBEAFE",
+      iconColor: "#2563EB",
     };
   }
 
-  if (tone === "info") {
+  if (tone === "purple") {
     return {
-      color: COLORS.info,
-      lightColor: COLORS.infoLight,
+      iconBg: "#F3E8FF",
+      iconColor: "#7C3AED",
     };
   }
 
   return {
-    color: COLORS.primary,
-    lightColor: COLORS.primaryLight,
+    iconBg: "#DCFCE7",
+    iconColor: "#059669",
   };
 }
 
@@ -106,56 +104,6 @@ function isOpenReport(report: IncidentReport) {
 
 function isResolvedReport(report: IncidentReport) {
   return ["resolved", "student_confirmed", "closed"].includes(report.status);
-}
-
-function QuickActionCard({
-  title,
-  description,
-  icon,
-  onPress,
-  tone = "primary",
-}: QuickActionProps) {
-  const { color, lightColor } = getToneColors(tone);
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.quickActionCard,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <View style={[styles.quickActionIcon, { backgroundColor: lightColor }]}>
-        {icon}
-      </View>
-
-      <View style={styles.quickActionTextBox}>
-        <Text style={styles.quickActionTitle}>{title}</Text>
-        <Text style={styles.quickActionDescription}>{description}</Text>
-      </View>
-
-      <View style={styles.quickActionArrow}>
-        <ChevronRight size={18} color={color} />
-      </View>
-    </Pressable>
-  );
-}
-
-function WorkflowCard({ number, title, text, icon }: WorkflowCardProps) {
-  return (
-    <View style={styles.workflowCard}>
-      <View style={styles.workflowTopRow}>
-        <View style={styles.workflowNumber}>
-          <Text style={styles.workflowNumberText}>{number}</Text>
-        </View>
-
-        <View style={styles.workflowIcon}>{icon}</View>
-      </View>
-
-      <Text style={styles.workflowTitle}>{title}</Text>
-      <Text style={styles.workflowText}>{text}</Text>
-    </View>
-  );
 }
 
 function buildSOSMessage({
@@ -181,6 +129,85 @@ Latitude: ${latitude}
 Longitude: ${longitude}
 
 Please call or check on them immediately.`;
+}
+
+function ToolCard({
+  title,
+  subtitle,
+  icon,
+  tone = "green",
+  onPress,
+}: ToolCardProps) {
+  const toneStyles = getTone(tone);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.toolCard,
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <View
+        style={[
+          styles.toolIconWrap,
+          { backgroundColor: toneStyles.iconBg },
+        ]}
+      >
+        {icon}
+      </View>
+
+      <View style={styles.toolTextWrap}>
+        <Text style={styles.toolTitle}>{title}</Text>
+        <Text style={styles.toolSubtitle}>{subtitle}</Text>
+      </View>
+
+      <View style={styles.toolArrow}>
+        <ChevronRight size={18} color={COLORS.softText} />
+      </View>
+    </Pressable>
+  );
+}
+
+function ReportPreviewCard({
+  title,
+  subtitle,
+  status,
+  statusTone = "warning",
+  icon,
+}: ReportPreviewCardProps) {
+  const isSuccess = statusTone === "success";
+
+  return (
+    <View style={styles.reportPreviewCard}>
+      <View style={styles.reportPreviewTop}>
+        <View style={styles.reportPreviewThumb}>{icon}</View>
+
+        <View style={styles.reportPreviewTextWrap}>
+          <View
+            style={[
+              styles.statusBadge,
+              isSuccess ? styles.statusSuccess : styles.statusWarning,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusBadgeText,
+                isSuccess
+                  ? styles.statusSuccessText
+                  : styles.statusWarningText,
+              ]}
+            >
+              {status}
+            </Text>
+          </View>
+
+          <Text style={styles.reportPreviewTitle}>{title}</Text>
+          <Text style={styles.reportPreviewSubtitle}>{subtitle}</Text>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export default function HomeScreen() {
@@ -212,6 +239,10 @@ export default function HomeScreen() {
       resolvedReports,
       criticalReports,
     };
+  }, [reports]);
+
+  const recentReports = useMemo(() => {
+    return [...reports].slice(0, 2);
   }, [reports]);
 
   const fetchReports = useCallback(async () => {
@@ -249,7 +280,6 @@ export default function HomeScreen() {
           },
         ]
       );
-
       return;
     }
 
@@ -340,286 +370,365 @@ export default function HomeScreen() {
   };
 
   return (
-    <Screen scroll>
-      <View style={styles.appShell}>
-        <View style={styles.greenHeader}>
-          <View style={styles.topNav}>
-            <Pressable style={styles.headerIconButton}>
-              <Menu size={25} color={COLORS.white} />
+    <Screen scroll contentStyle={{ paddingBottom: insets.bottom + 120 }}>
+      <View style={styles.page}>
+        {/* Top Green Header */}
+        <View style={styles.header}>
+          <View style={styles.headerTopRow}>
+            <Pressable style={styles.headerIconBtn}>
+              <Menu size={24} color={COLORS.white} />
             </Pressable>
 
-            <View style={styles.brandBox}>
-              <Text style={styles.brandTitle}>SafeCampus AI</Text>
-              <Text style={styles.brandSubtitle}>University of Ghana</Text>
+            <View style={styles.headerBrandWrap}>
+              <ShieldCheck size={24} color={COLORS.white} />
+              <Text style={styles.headerBrandText}>SafeCampus AI</Text>
             </View>
 
-            <Pressable onPress={fetchReports} style={styles.bellButton}>
+            <Pressable onPress={fetchReports} style={styles.headerIconBtn}>
               {loadingReports ? (
                 <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
-                <BellRing size={22} color={COLORS.white} />
+                <Bell size={22} color={COLORS.white} />
               )}
-
-              <View style={styles.notificationDot} />
+              <View style={styles.headerNotificationDot} />
             </Pressable>
           </View>
 
-          <View style={styles.heroContent}>
-
-            <Text style={styles.heroTitle}>Report. Route. Resolve.</Text>
-
-            <Text style={styles.heroText}>
-              Students report campus issues with location and photo evidence.
-              SafeCampus AI classifies, prioritizes, and routes each case to the
-              responsible University of Ghana authority.
-            </Text>
-          </View>
-
-          <View style={styles.floatingReportCard}>
-            <View style={styles.floatingIcon}>
-              <ClipboardList size={22} color={COLORS.primary} />
+          <View style={styles.headerStatusRow}>
+            <View style={styles.headerPill}>
+              <ShieldCheck size={15} color={COLORS.primary} />
+              <Text style={styles.headerPillText}>Protected</Text>
             </View>
 
-            <View style={styles.floatingTextBox}>
-              <Text style={styles.floatingTitle}>Need to report something?</Text>
-              <Text style={styles.floatingText}>
-                Lecture room fault, sanitation, fire, disaster, ICT, or safety issue.
-              </Text>
+            <View style={styles.headerPill}>
+              <CircleAlert size={15} color={COLORS.primary} />
+              <Text style={styles.headerPillText}>Emergency Ready</Text>
             </View>
-
-            <Pressable
-              onPress={() => router.push("/(tabs)/report")}
-              style={styles.plusButton}
-            >
-              <CirclePlus size={24} color={COLORS.white} />
-            </Pressable>
           </View>
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{homeStats.totalReports}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+        {/* Floating Ask Card */}
+        <View style={styles.askCard}>
+          <View style={styles.askLeftIcon}>
+            <ShieldCheck size={22} color={COLORS.primary} />
           </View>
 
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: COLORS.info }]}>
-              {homeStats.openReports}
-            </Text>
-            <Text style={styles.statLabel}>Open</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: COLORS.primary }]}>
-              {homeStats.resolvedReports}
-            </Text>
-            <Text style={styles.statLabel}>Resolved</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: COLORS.danger }]}>
-              {homeStats.criticalReports}
-            </Text>
-            <Text style={styles.statLabel}>Critical</Text>
-          </View>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Main Actions</Text>
-          <Text style={styles.sectionSubtitle}>
-            Use these tools to report, track, and resolve campus issues.
-          </Text>
-        </View>
-
-        <View style={styles.quickActionsList}>
-          <QuickActionCard
-            title="Report Campus Issue"
-            description="Submit a problem with exact location, description, and photo evidence."
-            tone="primary"
-            icon={<Camera size={23} color={COLORS.primary} />}
-            onPress={() => router.push("/(tabs)/report")}
-          />
-
-          <QuickActionCard
-            title="Campus Issue Map"
-            description="View open, urgent, resolved, and mapped campus reports."
-            tone="info"
-            icon={<Map size={23} color={COLORS.info} />}
-            onPress={() => router.push("/(tabs)/risk-map")}
-          />
-
-          <QuickActionCard
-  title="Live Safe Navigation"
-  description="Start a monitored walk on campus with destination, nearby issue checks, and trusted contact support."
-  tone="primary"
-  icon={<ShieldCheck size={23} color={COLORS.primary} />}
-  onPress={() => router.push("/(tabs)/walk-safe")}
-/>
-
-          <QuickActionCard
-            title="Authority Dashboard"
-            description="Accept, start work, resolve, close, or escalate reported cases."
-            tone="warning"
-            icon={<Wrench size={23} color={COLORS.warning} />}
-            onPress={() => router.push("/admin")}
-          />
-
-          <QuickActionCard
-            title="Emergency Contacts"
-            description="Manage trusted people who receive urgent SOS alerts."
-            tone="danger"
-            icon={<ContactRound size={23} color={COLORS.danger} />}
-            onPress={() => router.push("/contacts")}
-          />
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>How SafeCampus AI Works</Text>
-          <Text style={styles.sectionSubtitle}>
-            This workflow shows what the system does after a student submits a
-            report.
-          </Text>
-        </View>
-
-        <View style={styles.workflowGrid}>
-          <WorkflowCard
-            number="01"
-            title="Student reports"
-            text="The student submits a campus problem with date, location, description, and evidence."
-            icon={<UsersRound size={20} color={COLORS.primary} />}
-          />
-
-          <WorkflowCard
-            number="02"
-            title="AI classifies"
-            text="The system detects issue type, priority score, and the responsible UG unit."
-            icon={<Brain size={20} color={COLORS.primary} />}
-          />
-
-          <WorkflowCard
-            number="03"
-            title="Authority acts"
-            text="The authority accepts the case, starts work, resolves it, or escalates it."
-            icon={<Building2 size={20} color={COLORS.primary} />}
-          />
-
-          <WorkflowCard
-            number="04"
-            title="Proof is stored"
-            text="Finished-work photo evidence and status history prove that action was taken."
-            icon={<CheckCircle2 size={20} color={COLORS.primary} />}
-          />
-        </View>
-
-        <View style={styles.emergencyCard}>
-          <View style={styles.emergencyTopRow}>
-            <View style={styles.emergencyIcon}>
-              <ShieldAlert size={26} color={COLORS.danger} />
-            </View>
-
-            <View style={styles.emergencyTextBox}>
-              <Text style={styles.emergencyTitle}>Emergency SOS</Text>
-              <Text style={styles.emergencyText}>
-                Use this only for urgent personal safety or medical emergencies.
-                Your GPS location will be sent to your trusted contact.
-              </Text>
-            </View>
+          <View style={styles.askTextWrap}>
+            <Text style={styles.askText}>What would you like to do today?</Text>
           </View>
 
           <Pressable
-            onPress={handleSOSPress}
-            style={({ pressed }) => [
-              styles.sosButton,
-              pressed && styles.sosButtonPressed,
-            ]}
+            onPress={() => router.push("/(tabs)/report")}
+            style={styles.askActionBtn}
           >
-            <ShieldAlert size={22} color={COLORS.white} />
-            <Text style={styles.sosButtonText}>Send Emergency SOS</Text>
+            <CirclePlus size={24} color={COLORS.white} />
           </Pressable>
         </View>
 
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Database size={22} color={COLORS.primary} />
+        {/* Small Action Strip */}
+        <View style={styles.actionStrip}>
+          <Pressable
+            style={styles.actionStripItem}
+            onPress={() => router.push("/(tabs)/walk-safe")}
+          >
+            <View style={[styles.actionStripIcon, { backgroundColor: "#DCFCE7" }]}>
+              <Route size={20} color="#059669" />
+            </View>
+            <Text style={[styles.actionStripLabel, { color: "#059669" }]}>
+              Check In
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionStripItem}
+            onPress={() => router.push("/contacts")}
+          >
+            <View style={[styles.actionStripIcon, { backgroundColor: "#DCFCE7" }]}>
+              <ContactRound size={20} color="#16A34A" />
+            </View>
+            <Text style={[styles.actionStripLabel, { color: "#16A34A" }]}>
+              My Circle
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionStripItem}
+            onPress={() => router.push("/(tabs)/report")}
+          >
+            <View style={[styles.actionStripIcon, { backgroundColor: "#FEE2E2" }]}>
+              <ShieldAlert size={20} color="#DC2626" />
+            </View>
+            <Text style={[styles.actionStripLabel, { color: "#DC2626" }]}>
+              Report
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionStripItem}
+            onPress={() => router.push("/admin")}
+          >
+            <View style={[styles.actionStripIcon, { backgroundColor: "#DBEAFE" }]}>
+              <BarChart3 size={20} color="#2563EB" />
+            </View>
+            <Text style={[styles.actionStripLabel, { color: "#2563EB" }]}>
+              Insights
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Hero Card */}
+        <View style={styles.heroCard}>
+  <Image
+    source={HERO_IMAGE}
+    style={styles.heroBannerImage}
+    resizeMode="cover"
+  />
+
+  <View style={styles.heroTextBlock}>
+    <Text style={styles.heroEyebrow}>A SAFER, BRIGHTER TOMORROW</Text>
+
+    <Text style={styles.heroTitle}>Make Campus Better</Text>
+
+    <Text style={styles.heroDescription}>
+      Report classroom faults, sanitation issues, lighting problems, ICT
+      problems, hazards, and student safety concerns.
+    </Text>
+
+    <Pressable
+      onPress={() => router.push("/(tabs)/report")}
+      style={({ pressed }) => [
+        styles.heroButton,
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <Megaphone size={18} color={COLORS.white} />
+      <Text style={styles.heroButtonText}>Report an Issue</Text>
+      <ChevronRight size={18} color={COLORS.white} />
+    </Pressable>
+  </View>
+</View>
+
+        {/* Tools */}
+        <View style={styles.toolsGrid}>
+          <ToolCard
+            title="Track Reports"
+            subtitle="Check status and view updates"
+            icon={<FileText size={22} color="#059669" />}
+            tone="green"
+            onPress={() => router.push("/activity")}
+          />
+
+          <ToolCard
+            title="Campus Map"
+            subtitle="Find facilities and report hotspots"
+            icon={<MapPinned size={22} color="#DC2626" />}
+            tone="red"
+            onPress={() => router.push("/(tabs)/risk-map")}
+          />
+
+          <ToolCard
+            title="Live Safe Navigation"
+            subtitle="Get safe walking routes across campus"
+            icon={<Route size={22} color="#2563EB" />}
+            tone="blue"
+            onPress={() => router.push("/(tabs)/walk-safe")}
+          />
+
+          <ToolCard
+            title="My Activity"
+            subtitle="View your reports and contributions"
+            icon={<BarChart3 size={22} color="#7C3AED" />}
+            tone="purple"
+            onPress={() => router.push("/activity")}
+          />
+        </View>
+
+        {/* Alert Card */}
+        <View style={styles.alertCard}>
+          <View style={styles.alertIconWrap}>
+            <Bell size={20} color="#D97706" />
           </View>
 
-          <View style={styles.infoTextBox}>
-            <Text style={styles.infoTitle}>Why this is more than reporting</Text>
-            <Text style={styles.infoText}>
-              SafeCampus AI creates a traceable response system. Reports are not
-              only stored; they are classified, routed, monitored, resolved with
-              evidence, and displayed for accountability.
+          <View style={styles.alertTextWrap}>
+            <View style={styles.alertTopRow}>
+              <Text style={styles.alertTitle}>Today's Campus Alert</Text>
+              <Text style={styles.alertTime}>8:23 AM</Text>
+            </View>
+
+            <Text style={styles.alertMessage}>
+              Faulty light reported near Science Block (East Wing). Use
+              alternative routes at night for safer access.
             </Text>
           </View>
+
+          <ChevronRight size={18} color={COLORS.softText} />
+        </View>
+
+        {/* Recent Reports */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Your Recent Reports</Text>
+
+          <Pressable onPress={() => router.push("/activity")}>
+            <Text style={styles.sectionLink}>View All</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.recentReportsRow}>
+          {recentReports.length > 0 ? (
+            recentReports.slice(0, 2).map((report, index) => (
+              <ReportPreviewCard
+                key={report.id ?? `${report.title}-${index}`}
+                title={report.title}
+                subtitle={report.locationName || "University of Ghana campus"}
+                status={report.status}
+                statusTone={isResolvedReport(report) ? "success" : "warning"}
+                icon={
+                  isResolvedReport(report) ? (
+                    <CheckCircle2 size={26} color={COLORS.primary} />
+                  ) : (
+                    <ClipboardList size={26} color={COLORS.warning} />
+                  )
+                }
+              />
+            ))
+          ) : (
+            <>
+              <ReportPreviewCard
+                title="Faulty Light in LT1 Classroom"
+                subtitle="Reported 2 days ago"
+                status="Assigned"
+                statusTone="warning"
+                icon={<ClipboardList size={26} color={COLORS.warning} />}
+              />
+              <ReportPreviewCard
+                title="Blocked Walkway near Library"
+                subtitle="Reported 5 days ago"
+                status="Resolved"
+                statusTone="success"
+                icon={<CheckCircle2 size={26} color={COLORS.primary} />}
+              />
+            </>
+          )}
+        </View>
+
+        {/* Live Safe Navigation Banner */}
+        <View style={styles.navigationBanner}>
+          <View style={styles.navigationBannerLeft}>
+            <View style={styles.navigationBannerIcon}>
+              <MapPinned size={22} color={COLORS.primary} />
+            </View>
+
+            <Text style={styles.navigationBannerTitle}>Live Safe Navigation</Text>
+            <Text style={styles.navigationBannerText}>
+              Find the safest routes, avoid high-risk areas, and walk
+              confidently across campus.
+            </Text>
+
+            <Pressable
+              onPress={() => router.push("/(tabs)/walk-safe")}
+              style={styles.navigationBannerButton}
+            >
+              <Text style={styles.navigationBannerButtonText}>
+                Start Navigation
+              </Text>
+              <ChevronRight size={18} color={COLORS.white} />
+            </Pressable>
+          </View>
+
+          <View style={styles.navigationBannerMap}>
+            <View style={styles.fakeMapCard}>
+              <View style={styles.fakeMapPath} />
+              <View style={styles.fakeMapDotStart} />
+              <View style={styles.fakeMapDotEnd} />
+              <View style={styles.fakeMapBubble}>
+                <Text style={styles.fakeMapBubbleText}>
+                  Safer routes for a brighter campus
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* SOS Section */}
+        <View style={styles.sosSectionCard}>
+          <View style={styles.sosTopBadge}>
+            <ShieldAlert size={16} color={COLORS.danger} />
+            <Text style={styles.sosTopBadgeText}>EMERGENCY SOS</Text>
+          </View>
+
+          <View style={styles.sosCircleOuter}>
+            <View style={styles.sosCircleMiddle}>
+              <Pressable
+                onPress={handleSOSPress}
+                style={({ pressed }) => [
+                  styles.sosCircleButton,
+                  pressed && styles.sosPressed,
+                ]}
+              >
+                <ShieldAlert size={34} color={COLORS.white} />
+                <Text style={styles.sosCircleText}>SOS</Text>
+                <Text style={styles.sosCircleSubText}>Tap for help</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Text style={styles.sosHintText}>
+            If you feel unsafe, press SOS. SafeCampus AI will capture your
+            current GPS location and notify your trusted contact immediately.
+          </Text>
         </View>
       </View>
-
-      <View style={{ height: insets.bottom + 130 }} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  appShell: {
+  page: {
     marginHorizontal: -SPACING.xxl,
     marginTop: -SPACING.lg,
+    backgroundColor: "#F7F9FC",
   },
 
-  greenHeader: {
+  header: {
     backgroundColor: COLORS.primary,
     paddingTop: SPACING.xl,
     paddingHorizontal: SPACING.lg,
-    paddingBottom: 92,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
+    paddingBottom: 88,
+    borderBottomLeftRadius: 34,
+    borderBottomRightRadius: 34,
   },
 
-  topNav: {
+  headerTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
-  headerIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  brandBox: {
-    alignItems: "center",
-  },
-
-  brandTitle: {
-    fontSize: FONT_SIZE.lg,
-    color: COLORS.white,
-    fontWeight: "900",
-  },
-
-  brandSubtitle: {
-    marginTop: 2,
-    fontSize: FONT_SIZE.xs,
-    color: "rgba(255,255,255,0.78)",
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-
-  bellButton: {
-    width: 44,
-    height: 44,
+  headerIconBtn: {
+    width: 42,
+    height: 42,
     borderRadius: RADIUS.full,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
 
-  notificationDot: {
+  headerBrandWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  headerBrandText: {
+    fontSize: FONT_SIZE.xl,
+    color: COLORS.white,
+    fontWeight: "900",
+  },
+
+  headerNotificationDot: {
     position: "absolute",
-    top: 8,
-    right: 9,
+    top: 7,
+    right: 8,
     width: 9,
     height: 9,
     borderRadius: RADIUS.full,
@@ -628,62 +737,43 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
 
-  heroContent: {
-    marginTop: SPACING.xl,
+  headerStatusRow: {
+    marginTop: SPACING.lg,
+    flexDirection: "row",
+    gap: SPACING.md,
   },
 
-  heroPill: {
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.full,
+  headerPill: {
+    backgroundColor: "rgba(255,255,255,0.92)",
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
   },
 
-  heroPillText: {
+  headerPillText: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.primaryDark,
     fontWeight: "900",
   },
 
-  heroTitle: {
-    marginTop: SPACING.lg,
-    fontSize: 34,
-    color: COLORS.white,
-    fontWeight: "900",
-    letterSpacing: -0.8,
-  },
-
-  heroText: {
-    marginTop: SPACING.sm,
-    fontSize: FONT_SIZE.sm,
-    color: "rgba(255,255,255,0.86)",
-    lineHeight: 22,
-    fontWeight: "700",
-  },
-
-  floatingReportCard: {
-    position: "absolute",
-    left: SPACING.lg,
-    right: SPACING.lg,
-    bottom: -42,
-    minHeight: 86,
+  askCard: {
+    marginHorizontal: SPACING.lg,
+    marginTop: -40,
     backgroundColor: COLORS.surface,
-    borderRadius: 32,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     ...SHADOWS.card,
   },
 
-  floatingIcon: {
+  askLeftIcon: {
     width: 48,
     height: 48,
     borderRadius: RADIUS.full,
@@ -692,25 +782,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  floatingTextBox: {
+  askTextWrap: {
     flex: 1,
   },
 
-  floatingTitle: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
-    fontWeight: "900",
-  },
-
-  floatingText: {
-    marginTop: 2,
-    fontSize: FONT_SIZE.xs,
+  askText: {
+    fontSize: FONT_SIZE.md,
     color: COLORS.mutedText,
-    fontWeight: "700",
-    lineHeight: 18,
+    fontWeight: "800",
   },
 
-  plusButton: {
+  askActionBtn: {
     width: 48,
     height: 48,
     borderRadius: RADIUS.full,
@@ -720,168 +802,141 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
   },
 
-  statsRow: {
-    marginTop: 62,
+  actionStrip: {
+    marginTop: SPACING.lg,
     marginHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: SPACING.md,
     flexDirection: "row",
-    gap: SPACING.sm,
+    ...SHADOWS.soft,
   },
 
-  statCard: {
+  actionStripItem: {
     flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     alignItems: "center",
-    ...SHADOWS.soft,
+    justifyContent: "center",
+    gap: 8,
+    borderRightWidth: 1,
+    borderRightColor: "#EEF2F7",
   },
 
-  statValue: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  statLabel: {
-    marginTop: 2,
-    fontSize: 10,
-    color: COLORS.mutedText,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-
-  sectionHeader: {
-    marginTop: SPACING.xl,
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-  },
-
-  sectionTitle: {
-    fontSize: FONT_SIZE.lg,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  sectionSubtitle: {
-    marginTop: 4,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-    lineHeight: 20,
-  },
-
-  quickActionsList: {
-    marginHorizontal: SPACING.lg,
-    gap: SPACING.md,
-  },
-
-  quickActionCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-    ...SHADOWS.soft,
-  },
-
-  quickActionIcon: {
-    width: 56,
-    height: 56,
+  actionStripIcon: {
+    width: 42,
+    height: 42,
     borderRadius: RADIUS.full,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  quickActionTextBox: {
-    flex: 1,
-  },
-
-  quickActionTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  quickActionDescription: {
-    marginTop: 4,
+  actionStripLabel: {
     fontSize: FONT_SIZE.xs,
-    color: COLORS.mutedText,
-    fontWeight: "700",
-    lineHeight: 18,
+    fontWeight: "900",
   },
+  heroCard: {
+  marginTop: SPACING.xl,
+  marginHorizontal: SPACING.lg,
+  backgroundColor: COLORS.surface,
+  borderRadius: 30,
+  borderWidth: 1,
+  borderColor: "#DDEFE5",
+  overflow: "hidden",
+  ...SHADOWS.soft,
+},
 
-  quickActionArrow: {
-    width: 34,
-    height: 34,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+heroBannerImage: {
+  width: "100%",
+  height: 210,
+  backgroundColor: COLORS.primaryLight,
+},
 
-  cardPressed: {
-    transform: [{ scale: 0.985 }],
-    opacity: 0.92,
-  },
+heroTextBlock: {
+  padding: SPACING.lg,
+  backgroundColor: "#F6FFFA",
+},
 
-  workflowGrid: {
+heroEyebrow: {
+  fontSize: FONT_SIZE.xs,
+  fontWeight: "900",
+  color: COLORS.primary,
+  letterSpacing: 1,
+  textTransform: "uppercase",
+},
+
+heroTitle: {
+  marginTop: SPACING.sm,
+  fontSize: 30,
+  lineHeight: 35,
+  color: COLORS.primaryDark,
+  fontWeight: "900",
+  letterSpacing: -0.7,
+},
+
+heroDescription: {
+  marginTop: SPACING.sm,
+  fontSize: FONT_SIZE.sm,
+  lineHeight: 21,
+  color: COLORS.text,
+  fontWeight: "600",
+},
+
+heroButton: {
+  marginTop: SPACING.lg,
+  minHeight: 54,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primary,
+  paddingHorizontal: SPACING.lg,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: SPACING.sm,
+  ...SHADOWS.soft,
+},
+
+heroButtonText: {
+  color: COLORS.white,
+  fontSize: FONT_SIZE.md,
+  fontWeight: "900",
+},
+
+  toolsGrid: {
+    marginTop: SPACING.xl,
     marginHorizontal: SPACING.lg,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.md,
   },
 
-  workflowCard: {
-    width: "47%",
+  toolCard: {
+    width: "47.8%",
     backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    borderRadius: 22,
+    padding: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOWS.soft,
   },
 
-  workflowTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  workflowNumber: {
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 5,
-  },
-
-  workflowNumberText: {
-    fontSize: 10,
-    color: COLORS.primaryDark,
-    fontWeight: "900",
-  },
-
-  workflowIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
+  toolIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: SPACING.md,
   },
 
-  workflowTitle: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZE.sm,
+  toolTextWrap: {},
+
+  toolTitle: {
+    fontSize: FONT_SIZE.md,
     color: COLORS.text,
     fontWeight: "900",
   },
 
-  workflowText: {
+  toolSubtitle: {
     marginTop: 4,
     fontSize: FONT_SIZE.xs,
     color: COLORS.mutedText,
@@ -889,114 +944,386 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  emergencyCard: {
+  toolArrow: {
+    marginTop: SPACING.md,
+    alignSelf: "flex-end",
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  alertCard: {
     marginTop: SPACING.xl,
     marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
+    backgroundColor: "#FFF7E6",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.18)",
+    borderColor: "#FDE3A7",
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  alertIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: RADIUS.full,
+    backgroundColor: "#FEF3C7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  alertTextWrap: {
+    flex: 1,
+  },
+
+  alertTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  alertTitle: {
+    fontSize: FONT_SIZE.md,
+    color: "#92400E",
+    fontWeight: "900",
+  },
+
+  alertTime: {
+    fontSize: FONT_SIZE.xs,
+    color: "#92400E",
+    fontWeight: "800",
+  },
+
+  alertMessage: {
+    marginTop: 5,
+    fontSize: FONT_SIZE.sm,
+    lineHeight: 20,
+    color: "#92400E",
+    fontWeight: "700",
+  },
+
+  sectionHeader: {
+    marginTop: SPACING.xl,
+    marginHorizontal: SPACING.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  sectionTitle: {
+    fontSize: FONT_SIZE.xl,
+    color: COLORS.text,
+    fontWeight: "900",
+  },
+
+  sectionLink: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    fontWeight: "900",
+  },
+
+  recentReportsRow: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    gap: SPACING.md,
+  },
+
+  reportPreviewCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
     ...SHADOWS.soft,
   },
 
-  emergencyTopRow: {
+  reportPreviewTop: {
     flexDirection: "row",
-    alignItems: "flex-start",
     gap: SPACING.md,
+    alignItems: "flex-start",
   },
 
-  emergencyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.dangerLight,
+  reportPreviewThumb: {
+    width: 62,
+    height: 62,
+    borderRadius: 18,
+    backgroundColor: COLORS.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  emergencyTextBox: {
+  reportPreviewTextWrap: {
     flex: 1,
   },
 
-  emergencyTitle: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.danger,
+  statusBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    marginBottom: 8,
+  },
+
+  statusWarning: {
+    backgroundColor: "#FEF3C7",
+  },
+
+  statusSuccess: {
+    backgroundColor: "#DCFCE7",
+  },
+
+  statusBadgeText: {
+    fontSize: 11,
     fontWeight: "900",
   },
 
-  emergencyText: {
+  statusWarningText: {
+    color: "#B45309",
+  },
+
+  statusSuccessText: {
+    color: "#15803D",
+  },
+
+  reportPreviewTitle: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+    fontWeight: "900",
+  },
+
+  reportPreviewSubtitle: {
     marginTop: 4,
-    fontSize: FONT_SIZE.xs,
+    fontSize: FONT_SIZE.sm,
     color: COLORS.mutedText,
     fontWeight: "700",
-    lineHeight: 19,
   },
 
-  sosButton: {
-    marginTop: SPACING.lg,
-    minHeight: 52,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.danger,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    shadowColor: COLORS.danger,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    elevation: 5,
-  },
-
-  sosButtonPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.9,
-  },
-
-  sosButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.sm,
-    fontWeight: "900",
-  },
-
-  infoCard: {
+  navigationBanner: {
     marginTop: SPACING.xl,
     marginHorizontal: SPACING.lg,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.md,
+    backgroundColor: "#ECFDF5",
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: "rgba(5, 150, 105, 0.18)",
+    borderColor: "#D1FAE5",
+    padding: SPACING.lg,
+    overflow: "hidden",
+    ...SHADOWS.soft,
   },
 
-  infoIcon: {
-    width: 44,
-    height: 44,
+  navigationBannerLeft: {},
+
+  navigationBannerIcon: {
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#D1FAE5",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: SPACING.md,
   },
 
-  infoTextBox: {
-    flex: 1,
-  },
-
-  infoTitle: {
-    fontSize: FONT_SIZE.md,
+  navigationBannerTitle: {
+    fontSize: 18,
     color: COLORS.primaryDark,
     fontWeight: "900",
   },
 
-  infoText: {
-    marginTop: SPACING.xs,
+  navigationBannerText: {
+    marginTop: 6,
     fontSize: FONT_SIZE.sm,
+    lineHeight: 21,
     color: COLORS.primaryDark,
     fontWeight: "700",
-    lineHeight: 20,
+  },
+
+  navigationBannerButton: {
+    marginTop: SPACING.lg,
+    alignSelf: "flex-start",
+    minHeight: 48,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.xs,
+  },
+
+  navigationBannerButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.md,
+    fontWeight: "900",
+  },
+
+  navigationBannerMap: {
+    marginTop: SPACING.lg,
+  },
+
+  fakeMapCard: {
+    height: 170,
+    borderRadius: 22,
+    backgroundColor: "#DFF7EA",
+    overflow: "hidden",
+    position: "relative",
+    borderWidth: 1,
+    borderColor: "#C8EFD9",
+  },
+
+  fakeMapPath: {
+    position: "absolute",
+    left: 70,
+    top: 95,
+    width: 180,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+    transform: [{ rotate: "-15deg" }],
+  },
+
+  fakeMapDotStart: {
+    position: "absolute",
+    left: 54,
+    bottom: 34,
+    width: 18,
+    height: 18,
+    borderRadius: RADIUS.full,
+    backgroundColor: "#3B82F6",
+    borderWidth: 3,
+    borderColor: COLORS.white,
+  },
+
+  fakeMapDotEnd: {
+    position: "absolute",
+    right: 26,
+    top: 34,
+    width: 18,
+    height: 18,
+    borderRadius: RADIUS.full,
+    backgroundColor: "#10B981",
+    borderWidth: 3,
+    borderColor: COLORS.white,
+  },
+
+  fakeMapBubble: {
+    position: "absolute",
+    right: 16,
+    top: 16,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    maxWidth: 150,
+  },
+
+  fakeMapBubbleText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: COLORS.primaryDark,
+    fontWeight: "800",
+  },
+
+  sosSectionCard: {
+    marginTop: SPACING.xl,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "#F8D7DA",
+    padding: SPACING.lg,
+    alignItems: "center",
+    ...SHADOWS.soft,
+  },
+
+  sosTopBadge: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  sosTopBadgeText: {
+    color: COLORS.danger,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "900",
+  },
+
+  sosCircleOuter: {
+    marginTop: SPACING.xl,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: "rgba(220, 38, 38, 0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.10)",
+  },
+
+  sosCircleMiddle: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(220, 38, 38, 0.13)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.16)",
+  },
+
+  sosCircleButton: {
+    width: 134,
+    height: 134,
+    borderRadius: 67,
+    backgroundColor: COLORS.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.danger,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+
+  sosCircleText: {
+    marginTop: 6,
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+
+  sosCircleSubText: {
+    marginTop: 2,
+    color: "rgba(255,255,255,0.85)",
+    fontSize: FONT_SIZE.xs,
+    fontWeight: "800",
+  },
+
+  sosHintText: {
+    marginTop: SPACING.lg,
+    textAlign: "center",
+    fontSize: FONT_SIZE.sm,
+    lineHeight: 21,
+    color: COLORS.mutedText,
+    fontWeight: "700",
+  },
+
+  cardPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.94,
+  },
+
+  sosPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.92,
   },
 });

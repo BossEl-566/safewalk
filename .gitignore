@@ -10,7 +10,7 @@ web-build/
 .env
 .env.local
 .env.*.local
-.env.example
+api/.env.example
 
 # logs
 npm-debug.log*

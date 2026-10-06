@@ -189,4 +189,4 @@ module.exports = {
   getEmergencyContactById,
   updateEmergencyContact,
   deleteEmergencyContact,
-};
+}; 

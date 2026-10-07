@@ -22,7 +22,7 @@ export default function IndexScreen() {
     return <Redirect href="/onboarding" />;
   }
 
-  return <Redirect href="/(tabs)/home" />;
+  return <Redirect href="/login" />;
 }
 
 const styles = StyleSheet.create({

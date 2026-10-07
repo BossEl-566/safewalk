@@ -28,7 +28,7 @@ import { useOnboardingStore } from "../store/onboardingStore";
 
 const onboardingSlides = [
   {
-    title: "Welcome to SafeWalk AI",
+    title: "Welcome to SafeCampus AI",
     subtitle:
       "An AI-powered campus and off-campus safety assistant for university students.",
     icon: ShieldCheck,
@@ -71,26 +71,26 @@ export default function OnboardingScreen() {
   const Icon = slide.icon;
   const isLastSlide = currentIndex === onboardingSlides.length - 1;
 
-  const handleNext = () => {
-    if (!isLastSlide) {
-      setCurrentIndex((index) => index + 1);
-      return;
-    }
+ const handleNext = () => {
+  if (!isLastSlide) {
+    setCurrentIndex((index) => index + 1);
+    return;
+  }
 
-    completeOnboarding();
-    router.replace("/(tabs)/home");
-  };
+  completeOnboarding();
+  router.replace("/login" as any);
+};
 
-  const handleSkip = () => {
-    completeOnboarding();
-    router.replace("/(tabs)/home");
-  };
+const handleSkip = () => {
+  completeOnboarding();
+  router.replace("/login" as any);
+};
 
   return (
     <Screen>
       <View style={styles.container}>
         <View style={styles.topBar}>
-          <Text style={styles.brandText}>SafeWalk AI</Text>
+          <Text style={styles.brandText}>SafeCampus AI</Text>
 
           {!isLastSlide ? (
             <Pressable onPress={handleSkip}>
@@ -137,10 +137,10 @@ export default function OnboardingScreen() {
 
         <View style={styles.bottomSection}>
           <AppButton
-            title={isLastSlide ? "Get Started" : "Continue"}
-            onPress={handleNext}
-            icon={<ChevronRight size={21} color={COLORS.white} />}
-          />
+  title={isLastSlide ? "Continue to Login" : "Continue"}
+  onPress={handleNext}
+  icon={<ChevronRight size={21} color={COLORS.white} />}
+/>
 
           <Text style={styles.footerText}>
             Designed for student safety, incident awareness, and campus security

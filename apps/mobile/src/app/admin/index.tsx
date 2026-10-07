@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,11 +7,13 @@ import {
   Linking,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -503,16 +505,72 @@ async function pickResolutionPhoto() {
   ];
 }
 
+type StaffMember = {
+  id: string;
+  name: string;
+  unit: string;
+  role: string;
+  phone: string;
+};
+
+const STAFF_STORAGE_KEY = "safecampus-admin-staff-members";
+
+const DEFAULT_STAFF_MEMBERS: StaffMember[] = [
+  {
+    id: "staff-maintenance-1",
+    name: "Technician Kwame Mensah",
+    unit: "Facilities Maintenance",
+    role: "Maintenance Technician",
+    phone: "0240000001",
+  },
+  {
+    id: "staff-ict-1",
+    name: "ICT Support Officer",
+    unit: "IT Directorate",
+    role: "ICT Support",
+    phone: "0240000002",
+  },
+  {
+    id: "staff-security-1",
+    name: "Campus Security Team",
+    unit: "Campus Security",
+    role: "Security Response",
+    phone: "0240000003",
+  },
+  {
+    id: "staff-sanitation-1",
+    name: "Sanitation Response Team",
+    unit: "Sanitation Unit",
+    role: "Sanitation Officer",
+    phone: "0240000004",
+  },
+  {
+    id: "staff-health-1",
+    name: "UG Health Response",
+    unit: "UG Health Service",
+    role: "Medical Response",
+    phone: "0240000005",
+  },
+];
+
 export default function AdminDashboardScreen() {
   const insets = useSafeAreaInsets();
 
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
-  const [assignmentReport, setAssignmentReport] =
+const [assignmentReport, setAssignmentReport] =
   useState<IncidentReport | null>(null);
-const [assigneeName, setAssigneeName] = useState("");
+
+const [selectedStaffId, setSelectedStaffId] = useState("");
 const [assignmentNote, setAssignmentNote] = useState("");
+
+const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+const [staffModalVisible, setStaffModalVisible] = useState(false);
+const [staffName, setStaffName] = useState("");
+const [staffUnit, setStaffUnit] = useState("");
+const [staffRole, setStaffRole] = useState("");
+const [staffPhone, setStaffPhone] = useState("");
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -531,15 +589,105 @@ const [assignmentNote, setAssignmentNote] = useState("");
     }
   }, []);
 
+  const loadStaffMembers = useCallback(async () => {
+  try {
+    const savedStaff = await AsyncStorage.getItem(STAFF_STORAGE_KEY);
+
+    if (savedStaff) {
+      setStaffMembers(JSON.parse(savedStaff));
+      return;
+    }
+
+    setStaffMembers(DEFAULT_STAFF_MEMBERS);
+    await AsyncStorage.setItem(
+      STAFF_STORAGE_KEY,
+      JSON.stringify(DEFAULT_STAFF_MEMBERS)
+    );
+  } catch (error) {
+    console.log("Load staff failed:", error);
+    setStaffMembers(DEFAULT_STAFF_MEMBERS);
+  }
+}, []);
+
+const saveStaffMembers = useCallback(async (nextStaff: StaffMember[]) => {
+  setStaffMembers(nextStaff);
+  await AsyncStorage.setItem(STAFF_STORAGE_KEY, JSON.stringify(nextStaff));
+}, []);
+
+useEffect(() => {
+  loadStaffMembers();
+}, [loadStaffMembers]);
+
+const clearStaffForm = () => {
+  setStaffName("");
+  setStaffUnit("");
+  setStaffRole("");
+  setStaffPhone("");
+};
+
+const handleAddStaff = async () => {
+  if (!staffName.trim()) {
+    Alert.alert("Staff Name Required", "Please enter the staff name.");
+    return;
+  }
+
+  if (!staffUnit.trim()) {
+    Alert.alert("Staff Unit Required", "Please enter the staff unit.");
+    return;
+  }
+
+  const newStaff: StaffMember = {
+    id: `staff-${Date.now()}`,
+    name: staffName.trim(),
+    unit: staffUnit.trim(),
+    role: staffRole.trim() || "Responder",
+    phone: staffPhone.trim(),
+  };
+
+  await saveStaffMembers([newStaff, ...staffMembers]);
+
+  clearStaffForm();
+  setStaffModalVisible(false);
+};
+
+const handleRemoveStaff = (staffId: string) => {
+  Alert.alert(
+    "Remove Staff?",
+    "This staff member will no longer appear in the assignment list.",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          const nextStaff = staffMembers.filter((staff) => staff.id !== staffId);
+          await saveStaffMembers(nextStaff);
+        },
+      },
+    ]
+  );
+};
   useFocusEffect(
     useCallback(() => {
       fetchOverview();
     }, [fetchOverview])
   );
 
-  const openAssignmentModal = (report: IncidentReport) => {
+ const openAssignmentModal = (report: IncidentReport) => {
+  const suggestedUnit = report.assignedUnit || report.aiSuggestedUnit || "";
+
+  const suggestedStaff = staffMembers.find((staff) =>
+    suggestedUnit
+      ? staff.unit.toLowerCase().includes(suggestedUnit.toLowerCase()) ||
+        suggestedUnit.toLowerCase().includes(staff.unit.toLowerCase())
+      : false
+  );
+
   setAssignmentReport(report);
-  setAssigneeName(report.assignedToName || "");
+  setSelectedStaffId(suggestedStaff?.id || "");
   setAssignmentNote(
     report.aiRecommendedAction ||
       `Handle this ${report.problemType || report.title} report.`
@@ -548,17 +696,21 @@ const [assignmentNote, setAssignmentNote] = useState("");
 
 const closeAssignmentModal = () => {
   setAssignmentReport(null);
-  setAssigneeName("");
+  setSelectedStaffId("");
   setAssignmentNote("");
 };
 
 const handleAssignTask = async () => {
   if (!assignmentReport) return;
 
-  if (!assigneeName.trim()) {
+  const selectedStaff = staffMembers.find(
+    (staff) => staff.id === selectedStaffId
+  );
+
+  if (!selectedStaff) {
     Alert.alert(
-      "Assignee Required",
-      "Please enter the name of the person or team handling this task."
+      "Staff Required",
+      "Please select a staff member or team to handle this task."
     );
     return;
   }
@@ -578,12 +730,9 @@ const handleAssignTask = async () => {
       status: "assigned",
       actorName: "Authority Officer",
       actorRole: "authority",
-      assignedToName: assigneeName.trim(),
-      assignedUnit:
-        assignmentReport.assignedUnit ||
-        assignmentReport.aiSuggestedUnit ||
-        "Responsible Unit",
-      note: `Task assigned to ${assigneeName.trim()}. Instruction: ${assignmentNote.trim()}`,
+      assignedToName: selectedStaff.name,
+      assignedUnit: selectedStaff.unit,
+      note: `Task assigned to ${selectedStaff.name} (${selectedStaff.unit}). Instruction: ${assignmentNote.trim()}`,
     });
 
     closeAssignmentModal();
@@ -844,6 +993,65 @@ const handleAssignTask = async () => {
       ) : null}
 
       <View style={styles.section}>
+  <SectionTitle
+    title="Staff Directory"
+    subtitle="Add responders so reports can be assigned by selection instead of typing random names."
+  />
+
+  <View style={styles.staffDirectoryCard}>
+    <View style={styles.staffDirectoryHeader}>
+      <View>
+        <Text style={styles.staffDirectoryTitle}>Available Staff</Text>
+        <Text style={styles.staffDirectorySubtitle}>
+          {staffMembers.length} responder{staffMembers.length === 1 ? "" : "s"} available
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={() => setStaffModalVisible(true)}
+        style={styles.addStaffButton}
+      >
+        <UserCheck size={16} color={COLORS.white} />
+        <Text style={styles.addStaffButtonText}>Add Staff</Text>
+      </Pressable>
+    </View>
+
+    {staffMembers.length ? (
+      <View style={styles.staffList}>
+        {staffMembers.map((staff) => (
+          <View key={staff.id} style={styles.staffRow}>
+            <View style={styles.staffAvatar}>
+              <UserCheck size={18} color={COLORS.primary} />
+            </View>
+
+            <View style={styles.staffTextBox}>
+              <Text style={styles.staffName}>{staff.name}</Text>
+              <Text style={styles.staffMeta}>
+                {staff.unit} • {staff.role}
+              </Text>
+              {staff.phone ? (
+                <Text style={styles.staffPhone}>{staff.phone}</Text>
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={() => handleRemoveStaff(staff.id)}
+              style={styles.removeStaffButton}
+            >
+              <XCircle size={18} color={COLORS.danger} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    ) : (
+      <Text style={styles.noStaffText}>
+        No staff added yet. Add staff before assigning reports.
+      </Text>
+    )}
+  </View>
+</View>
+
+      <View style={styles.section}>
         <SectionTitle
           title="Open Campus Reports"
           subtitle="AI-classified reports waiting for authority action."
@@ -939,14 +1147,148 @@ const handleAssignTask = async () => {
         </Text>
       </View>
 
-      <Text style={styles.modalLabel}>Assigned responder / team</Text>
+      <Text style={styles.modalLabel}>Select responder / team</Text>
+
+<View style={styles.staffPickerBox}>
+  {staffMembers.length ? (
+    staffMembers.map((staff) => {
+      const selected = selectedStaffId === staff.id;
+
+      return (
+        <Pressable
+          key={staff.id}
+          onPress={() => setSelectedStaffId(staff.id)}
+          style={[
+            styles.staffOption,
+            selected && styles.staffOptionSelected,
+          ]}
+        >
+          <View
+            style={[
+              styles.staffOptionIcon,
+              selected && styles.staffOptionIconSelected,
+            ]}
+          >
+            <UserCheck
+              size={17}
+              color={selected ? COLORS.white : COLORS.primary}
+            />
+          </View>
+
+          <View style={styles.staffOptionTextBox}>
+            <Text
+              style={[
+                styles.staffOptionName,
+                selected && styles.staffOptionNameSelected,
+              ]}
+            >
+              {staff.name}
+            </Text>
+
+            <Text
+              style={[
+                styles.staffOptionMeta,
+                selected && styles.staffOptionMetaSelected,
+              ]}
+            >
+              {staff.unit} • {staff.role}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    })
+  ) : (
+    <View style={styles.noStaffModalBox}>
+      <Text style={styles.noStaffText}>
+        No staff available. Add staff first before assigning this report.
+      </Text>
+
+      <Pressable
+        onPress={() => setStaffModalVisible(true)}
+        style={styles.addStaffInlineButton}
+      >
+        <Text style={styles.addStaffInlineText}>Add Staff</Text>
+      </Pressable>
+    </View>
+  )}
+</View>
+
+<Modal
+  visible={staffModalVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setStaffModalVisible(false)}
+>
+  <View style={styles.modalBackdrop}>
+    <View style={styles.assignmentModal}>
+      <View style={styles.assignmentHeader}>
+        <View style={styles.assignmentIcon}>
+          <UserCheck size={24} color={COLORS.primary} />
+        </View>
+
+        <View style={styles.assignmentTitleBox}>
+          <Text style={styles.assignmentTitle}>Add Staff</Text>
+          <Text style={styles.assignmentSubtitle}>
+            Add responders who can be assigned campus reports.
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.modalLabel}>Staff name</Text>
       <TextInput
-        value={assigneeName}
-        onChangeText={setAssigneeName}
-        placeholder="Example: Technician Kwame / Maintenance Team A"
+        value={staffName}
+        onChangeText={setStaffName}
+        placeholder="Example: Technician Kwame Mensah"
         placeholderTextColor={COLORS.softText}
         style={styles.modalInput}
       />
+
+      <Text style={styles.modalLabel}>Unit / department</Text>
+      <TextInput
+        value={staffUnit}
+        onChangeText={setStaffUnit}
+        placeholder="Example: Facilities Maintenance"
+        placeholderTextColor={COLORS.softText}
+        style={styles.modalInput}
+      />
+
+      <Text style={styles.modalLabel}>Role</Text>
+      <TextInput
+        value={staffRole}
+        onChangeText={setStaffRole}
+        placeholder="Example: Maintenance Technician"
+        placeholderTextColor={COLORS.softText}
+        style={styles.modalInput}
+      />
+
+      <Text style={styles.modalLabel}>Phone number</Text>
+      <TextInput
+        value={staffPhone}
+        onChangeText={setStaffPhone}
+        placeholder="Example: 0240000000"
+        placeholderTextColor={COLORS.softText}
+        keyboardType="phone-pad"
+        style={styles.modalInput}
+      />
+
+      <View style={styles.modalActions}>
+        <Pressable
+          onPress={() => {
+            clearStaffForm();
+            setStaffModalVisible(false);
+          }}
+          style={styles.modalCancelButton}
+        >
+          <Text style={styles.modalCancelText}>Cancel</Text>
+        </Pressable>
+
+        <Pressable onPress={handleAddStaff} style={styles.modalAssignButton}>
+          <Text style={styles.modalAssignText}>Save Staff</Text>
+        </Pressable>
+      </View>
+    </View>
+  </View>
+</Modal>
 
       <Text style={styles.modalLabel}>Task instruction</Text>
       <TextInput
@@ -1662,6 +2004,197 @@ modalAssignButton: {
 modalAssignText: {
   fontSize: FONT_SIZE.sm,
   color: COLORS.white,
+  fontWeight: "900",
+},
+
+staffDirectoryCard: {
+  backgroundColor: COLORS.surface,
+  borderRadius: RADIUS.xl,
+  padding: SPACING.lg,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  ...SHADOWS.soft,
+},
+
+staffDirectoryHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: SPACING.md,
+  marginBottom: SPACING.md,
+},
+
+staffDirectoryTitle: {
+  fontSize: FONT_SIZE.md,
+  color: COLORS.text,
+  fontWeight: "900",
+},
+
+staffDirectorySubtitle: {
+  marginTop: 3,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+},
+
+addStaffButton: {
+  minHeight: 42,
+  borderRadius: RADIUS.full,
+  paddingHorizontal: SPACING.md,
+  backgroundColor: COLORS.primary,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+},
+
+addStaffButtonText: {
+  color: COLORS.white,
+  fontSize: FONT_SIZE.xs,
+  fontWeight: "900",
+},
+
+staffList: {
+  gap: SPACING.sm,
+},
+
+staffRow: {
+  backgroundColor: COLORS.surfaceMuted,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.md,
+},
+
+staffAvatar: {
+  width: 42,
+  height: 42,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primaryLight,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+staffTextBox: {
+  flex: 1,
+},
+
+staffName: {
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.text,
+  fontWeight: "900",
+},
+
+staffMeta: {
+  marginTop: 3,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+  lineHeight: 17,
+},
+
+staffPhone: {
+  marginTop: 2,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.primary,
+  fontWeight: "800",
+},
+
+removeStaffButton: {
+  width: 36,
+  height: 36,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.dangerLight,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+noStaffText: {
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+  lineHeight: 20,
+},
+
+staffPickerBox: {
+  marginBottom: SPACING.lg,
+  gap: SPACING.sm,
+},
+
+staffOption: {
+  borderRadius: RADIUS.lg,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  backgroundColor: COLORS.surface,
+  padding: SPACING.md,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: SPACING.md,
+},
+
+staffOptionSelected: {
+  borderColor: COLORS.primary,
+  backgroundColor: COLORS.primaryLight,
+},
+
+staffOptionIcon: {
+  width: 38,
+  height: 38,
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primaryLight,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+staffOptionIconSelected: {
+  backgroundColor: COLORS.primary,
+},
+
+staffOptionTextBox: {
+  flex: 1,
+},
+
+staffOptionName: {
+  fontSize: FONT_SIZE.sm,
+  color: COLORS.text,
+  fontWeight: "900",
+},
+
+staffOptionNameSelected: {
+  color: COLORS.primaryDark,
+},
+
+staffOptionMeta: {
+  marginTop: 3,
+  fontSize: FONT_SIZE.xs,
+  color: COLORS.mutedText,
+  fontWeight: "700",
+  lineHeight: 17,
+},
+
+staffOptionMetaSelected: {
+  color: COLORS.primaryDark,
+},
+
+noStaffModalBox: {
+  backgroundColor: COLORS.surfaceMuted,
+  borderRadius: RADIUS.lg,
+  padding: SPACING.md,
+  gap: SPACING.md,
+},
+
+addStaffInlineButton: {
+  alignSelf: "flex-start",
+  borderRadius: RADIUS.full,
+  backgroundColor: COLORS.primary,
+  paddingHorizontal: SPACING.lg,
+  paddingVertical: SPACING.sm,
+},
+
+addStaffInlineText: {
+  color: COLORS.white,
+  fontSize: FONT_SIZE.xs,
   fontWeight: "900",
 },
 });

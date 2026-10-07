@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -148,6 +150,45 @@ const areaOptions: { label: string; value: IncidentAreaType }[] = [
   { label: "Not sure", value: "unknown" },
 ];
 
+async function prepareEvidenceImage(uri: string) {
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [
+      {
+        resize: {
+          width: 1200,
+        },
+      },
+    ],
+    {
+      compress: 0.65,
+      format: ImageManipulator.SaveFormat.JPEG,
+    }
+  );
+
+  return result.uri;
+}
+
+const REPORT_CAMERA_PENDING_KEY = "safecampus-report-camera-pending";
+
+function getFirstPickerAsset(result: ImagePicker.ImagePickerResult) {
+  if (result.canceled || !result.assets?.[0]?.uri) {
+    return null;
+  }
+
+  return result.assets[0];
+}
+
+async function buildEvidenceFromAsset(asset: ImagePicker.ImagePickerAsset) {
+  const compressedUri = await prepareEvidenceImage(asset.uri);
+
+  return {
+    uri: compressedUri,
+    type: "image" as const,
+    uploadedAt: new Date().toISOString(),
+  };
+}
+
 export default function ReportScreen() {
   const insets = useSafeAreaInsets();
 
@@ -183,6 +224,58 @@ export default function ReportScreen() {
   const [evidence, setEvidence] = useState<ReportEvidence[]>([]);
 
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+  let active = true;
+
+  const recoverPendingCameraResult = async () => {
+    try {
+      const wasTakingPhoto = await AsyncStorage.getItem(
+        REPORT_CAMERA_PENDING_KEY
+      );
+
+      if (!wasTakingPhoto) {
+        return;
+      }
+
+      await AsyncStorage.removeItem(REPORT_CAMERA_PENDING_KEY);
+
+      const pendingResult = await ImagePicker.getPendingResultAsync();
+
+      if (!active || !pendingResult) {
+        return;
+      }
+
+      if ("canceled" in pendingResult) {
+        const asset = getFirstPickerAsset(pendingResult);
+
+        if (!asset) {
+          return;
+        }
+
+        const recoveredEvidence = await buildEvidenceFromAsset(asset);
+
+        if (!active) {
+          return;
+        }
+
+        setEvidence((current) => [...current, recoveredEvidence]);
+
+        Alert.alert(
+          "Photo Recovered",
+          "SafeCampus AI recovered the photo after Android restarted the camera activity."
+        );
+      }
+    } catch (error) {
+      console.log("Recover pending camera result failed:", error);
+    }
+  };
+
+  recoverPendingCameraResult();
+
+  return () => {
+    active = false;
+  };
+}, []);
 
   const aiPreview = useMemo(() => {
     return generateIncidentAI({
@@ -284,7 +377,8 @@ export default function ReportScreen() {
     }
   };
 
-  const handleTakePhoto = async () => {
+const handleTakePhoto = async () => {
+  try {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
 
     if (!permission.granted) {
@@ -295,26 +389,44 @@ export default function ReportScreen() {
       return;
     }
 
+    await AsyncStorage.setItem(REPORT_CAMERA_PENDING_KEY, "true");
+
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
+      quality: 0.2,
       allowsEditing: false,
+      base64: false,
+      exif: false,
+      cameraType: ImagePicker.CameraType.back,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setEvidence((current) => [
-        ...current,
-        {
-          uri: result.assets[0].uri,
-          type: "image",
-          uploadedAt: new Date().toISOString(),
-        },
-      ]);
+    await AsyncStorage.removeItem(REPORT_CAMERA_PENDING_KEY);
+
+    const asset = getFirstPickerAsset(result);
+
+    if (!asset) {
+      return;
     }
-  };
+
+    const newEvidence = await buildEvidenceFromAsset(asset);
+
+    setEvidence((current) => [...current, newEvidence]);
+  } catch (error) {
+    await AsyncStorage.removeItem(REPORT_CAMERA_PENDING_KEY);
+
+    console.log("Camera capture failed:", error);
+
+    Alert.alert(
+      "Camera Error",
+      "SafeCampus AI could not attach the photo. Please use Choose Image or try the front camera."
+    );
+  }
+};
 
   const handlePickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  try {
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
       Alert.alert(
@@ -326,20 +438,38 @@ export default function ReportScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
+      quality: 0.55,
       allowsMultipleSelection: true,
+      base64: false,
+      exif: false,
     });
 
-    if (!result.canceled) {
-      const selectedImages = result.assets.map((asset) => ({
-        uri: asset.uri,
-        type: "image" as const,
-        uploadedAt: new Date().toISOString(),
-      }));
-
-      setEvidence((current) => [...current, ...selectedImages]);
+    if (result.canceled) {
+      return;
     }
-  };
+
+    const selectedImages = await Promise.all(
+      result.assets.map(async (asset) => {
+        const compressedUri = await prepareEvidenceImage(asset.uri);
+
+        return {
+          uri: compressedUri,
+          type: "image" as const,
+          uploadedAt: new Date().toISOString(),
+        };
+      })
+    );
+
+    setEvidence((current) => [...current, ...selectedImages]);
+  } catch (error) {
+    console.log("Image picker failed:", error);
+
+    Alert.alert(
+      "Image Error",
+      "SafeCampus AI could not attach the selected image. Please try again."
+    );
+  }
+};
 
   const handleRemoveEvidence = (uri: string) => {
     setEvidence((current) => current.filter((item) => item.uri !== uri));
